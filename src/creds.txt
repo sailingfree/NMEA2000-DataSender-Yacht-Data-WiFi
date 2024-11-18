@@ -1,4 +1,0 @@
-#define SSID1   "MayFly1848"
-#define SSPW1   "Hanse301"
-#define SSID2   "naiadhome3"
-#define SSPW2   "Dragonfly301"
