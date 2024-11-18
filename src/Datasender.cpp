@@ -70,7 +70,7 @@ static bool ShowSentMessages=false;
 static bool ShowStatistics=false;
 static bool Sending=false;
 static bool EnableForward=false;
-static bool enableYD = true;
+static bool enableYD = false;
 static tN2kScheduler NextStatsTime;
 static unsigned long StatisticsPeriod=2000;
 
@@ -433,7 +433,7 @@ void setup() {
 
 
   Serial.println("Starting message sender!");
-  Serial.println("  Message sending to bus starts in 10 seconds.");
+//  Serial.println("  Message sending to bus starts in 10 seconds.");
   Serial.println("  Type ?<lf> for available commands.");
 }
 
@@ -930,7 +930,7 @@ void OnN2kOpen() {
       N2kSendMessages[i].Scheduler.UpdateNextTime();
     }
   }
-  Sending=true;
+ // Sending=true;
 }
 
 // *****************************************************************************
@@ -1233,6 +1233,7 @@ void CheckCommand() {
         }
       }
       if ( !FoundCommand ) {
+        Serial.printf("");
         Serial.print("Unknown command ");
         Serial.println(Command);
       }
