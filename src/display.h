@@ -1,0 +1,2 @@
+void displayInit();
+void handleDisplay();
