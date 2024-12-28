@@ -43,6 +43,7 @@
 #include <time.h>
 #include <ntpclient.h>
 #include <display.h>
+#include <touch_calibrate.h>
 
 
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 1024
@@ -324,6 +325,9 @@ void setup() {
         macAddress += String(chipid[i], HEX);
     }
 
+ 
+
+    // Init the display
     displayInit();
 
     // Generate the hostname by appending the last two octets of the mac address to make it unique
@@ -504,9 +508,8 @@ void loop() {
         }
 
         CheckLoopTime();
-
-        handleDisplay();
     }
+    handleDisplay();
 }
 
 // *****************************************************************************
