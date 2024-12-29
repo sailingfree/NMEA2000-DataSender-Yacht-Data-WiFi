@@ -49,14 +49,6 @@ static int list(int argc, char** argv) {
     return 0;
 }
 
-// Show the boat data
-static int boat(int argc, char** argv) {
-    StringStream s;
-    displayBoat(s);
-    shell.print(s.data);
-    return 0;
-}
-
 // Show some system information
 static int sys(int argc, char** argv) {
     StringStream s;
@@ -168,7 +160,6 @@ void initGwShell() {
     Serial.println("Initialisting the shell");
     shell.addCommand(F("id"), showID);
     shell.addCommand(F("list"), list);
-    shell.addCommand(F("boat"), boat);
     shell.addCommand(F("sys"), sys);
     shell.addCommand(F("net"), net);
     shell.addCommand(F("getval"), getval);

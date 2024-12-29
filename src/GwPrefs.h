@@ -44,21 +44,6 @@ void GwPrint(Stream &s);
 #define GWSSID "gwssid"
 #define GWPASS "gwpass"
 
-// Diameter of the engine pulley
-#define ENGINEDIA "enginedia"
-
-// Diameter fo the alternator pulley
-#define ALTDIA "altdia"
-
-// Number of alternator poles
-#define ALTPOLES "poles"
-
-// Pressure calibration in mbar
-#define PRESSCAL "presscal"
-
-// Compass offset value in degrees
-#define COMPASSOFF "compassoff"
-
 // Hostname advertised by the network
 #define GWHOST "gwhost"
 

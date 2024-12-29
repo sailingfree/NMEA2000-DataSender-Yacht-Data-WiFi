@@ -104,3 +104,4 @@ extern TFT_eSPI * tft;
 
 void displayInit();
 void handleDisplay();
+void displayText(const char * txt);

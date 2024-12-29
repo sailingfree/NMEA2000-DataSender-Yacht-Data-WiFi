@@ -200,3 +200,7 @@ static lv_obj_t *createMain() {
 
     return screen;
 }
+
+void displayText(const char * txt) {
+    Serial.printf("Displaying '%s'\n", txt);
+}

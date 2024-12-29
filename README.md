@@ -41,3 +41,12 @@ PIN NO. 	SYMBOL 	DESCRIPTION
 23 	LCD_SCK / TP_SCK 	SPI clock of LCD/Touch Panel
 24 	LCD_CS 	LCD chip selection, low active
 26 	TP_CS 	Touch Panel chip selection, low active 
+
+on rpi 3.5 inch Display ribbom QD35044p
+
+Try the old ender 3 v2 screen.
+Marked dmt48270c043 
+Called the DWIN screen i think
+https://www.reddit.com/r/arduino/comments/1bmywvg/trying_to_get_a_dmt48270c043_04wnz11_to_display/
+
+
