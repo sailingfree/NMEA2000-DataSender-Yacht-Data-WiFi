@@ -61,6 +61,9 @@
 // system preferences stored in flash
 #include <GwPrefs.h>
 
+// Rotary encoder
+#include <rotary_encoder.h>
+
 // Forward declarations for functions
 void CheckCommand();
 
@@ -153,6 +156,7 @@ void setup() {
     initGwShell();
     setShellSource(&Serial);
 
+    rotary_setup();
 //    prompt();
 }
 
@@ -164,6 +168,8 @@ void loop() {
     wifiWork();
     wifiCheck();
 
+    rotary_loop();
+    
     // Update the display and handle touch events
     handleDisplay();
     
