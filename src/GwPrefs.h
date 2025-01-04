@@ -26,9 +26,12 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 void GwPrefsInit();
 String GwSetVal(const char *key, String val);
 String GwGetVal(const char *key, String defval = "---");
+int32_t GwSetInt(const char * key, int32_t val);
+int32_t GwGetInt(const char * key);
 void GwListRegs(Stream &s);
 bool isGwKey(String k);
 void GwPrint(Stream &s);
+void GwAddReg(const char * key);
 
 // WiFi mode. Can be AP CL OFF
 #define WIFIMODE "wifi"

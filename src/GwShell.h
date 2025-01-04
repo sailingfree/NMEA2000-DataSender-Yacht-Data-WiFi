@@ -22,11 +22,13 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <Arduino.h>
+#include <SimpleSerialShell.h>
 
 #include <map>
 
 extern String WifiMode, WifiIP, WifiSSID;
 extern String host_name, macAddress;
+extern SimpleSerialShell& shell;
 
 void initGwShell();
 void setShellSource(Stream* stream);

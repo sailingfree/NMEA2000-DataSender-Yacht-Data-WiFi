@@ -2,6 +2,11 @@
 
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 1024
 
+// N2K sender preference keys
+#define YDENABLE    "ydenable"
+#define CANENBALE   "canenable"
+#define N2KMAP      "n2kmap"
+
 void setupN2ksender();
 void handleN2kMessages();
 void ToggleStats(const char *);

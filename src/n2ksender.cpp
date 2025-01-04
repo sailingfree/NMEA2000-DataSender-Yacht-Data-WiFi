@@ -12,6 +12,8 @@
 #include <N2kDeviceList.h>
 #include <n2ksender.h>
 #include <N2ktoYD.h>
+#include <GwShell.h>
+#include <GwPrefs.h>
 
 
 // List of n2k devices for the device scanner
@@ -21,6 +23,7 @@ tN2kDeviceList *pN2kDeviceList;
 void OnN2kOpen();
 void CheckLoopTime();
 using tN2kSendFunction = void (*)();
+void addCommands();
 
 // Structure for holding message sending information
 struct tN2kSendMessage {
@@ -41,13 +44,52 @@ extern size_t nN2kSendMessages;
 
 static unsigned long N2kMsgSentCount = 0;
 static unsigned long N2kMsgFailCount = 0;
+
+// Toggles for sending and disagnostics
+// These are saved in the preferences
+static bool enableCAN = false;
+static bool enableYD = false;
+
+// Other toggles are reset at startup
 static bool ShowSentMessages = false;
 static bool ShowStatistics = false;
-static bool Sending = false;
 static bool EnableForward = false;
-static bool enableYD = false;
+
 static tN2kScheduler NextStatsTime;
 static unsigned long StatisticsPeriod = 2000;
+
+// Convert the list of message enable flags into a binary format
+// For saving into the preferences
+// This is done to cut down the number of keys needed.
+// there afewer than 32 messages so we use an unsigned 32 bit value
+uint32_t enableMap;
+
+// Create the map and save it in enableMap
+void msgToMap() {
+    enableMap = 0;
+    for (size_t i = 0; i < nN2kSendMessages; i++) {
+        enableMap |= N2kSendMessages[i].Scheduler.IsEnabled() << i;
+    }
+}
+
+// Use the map to set the enable flags in the messages
+void mapToMsg() {
+    for (size_t i = 0; i < nN2kSendMessages; i++) {
+        N2kSendMessages[i].Enable(enableMap & 1 <<i);
+    }
+}
+
+// read the map from the preferences and upadte the messages
+void readMap() {
+    enableMap = GwGetInt(N2KMAP);
+    mapToMsg();
+}
+
+// save the map as a preference
+void saveMap() {
+    msgToMap();
+    GwSetInt(N2KMAP, enableMap);
+}
 
 // Handle some other gw messages from other gw nodes
 static void handle_gw_msgs(const tN2kMsg &N2kMsg) {
@@ -92,6 +134,20 @@ static const unsigned long ReceiveMessages[] PROGMEM = {/*126992L,*/  // System 
 
 
 void setupN2ksender() {
+    // Add the n2k commands to the shell
+    addCommands();
+
+    // Add sender specific preference keys
+    GwAddReg(YDENABLE);
+    GwAddReg(CANENBALE);
+    GwAddReg(N2KMAP);
+
+    // Get the values of the toggles from the preferences
+    enableYD = GwGetInt(YDENABLE);
+    enableCAN = GwGetInt(CANENBALE);
+
+    // Read the map of enabled messages and set their send state
+    readMap();
 
     // Reserve enough buffer for sending all messages.
     // This does not work on small memory devices like Uno or Mega
@@ -124,9 +180,6 @@ void setupN2ksender() {
     NMEA2000.ExtendTransmitMessages(TransmitMessages);
     NMEA2000.ExtendReceiveMessages(ReceiveMessages);
     NMEA2000.Open();
-
-    Serial.println("Starting message sender!");
-    //  Serial.println("  Message sending to bus starts in 10 seconds.");
 }
 
 // *****************************************************************************
@@ -135,7 +188,7 @@ void SendN2kMsg(const tN2kMsg &N2kMsg) {
         GwSendYD(N2kMsg);
     }
 
-    if (Sending) {
+    if (enableCAN) {
         if (NMEA2000.SendMsg(N2kMsg)) {
             N2kMsgSentCount++;
         } else {
@@ -179,7 +232,7 @@ void SendN2kMessages() {
 }
 
 void handleN2kMessages() {
-    if (Sending || enableYD) SendN2kMessages();
+    if (enableCAN || enableYD) SendN2kMessages();
     NMEA2000.ParseMessages();
     if (ShowStatistics) {
         if (NextStatsTime.IsTime()) {
@@ -689,180 +742,133 @@ void tN2kSendMessage::Enable(bool state) {
 }
 
 // *****************************************************************************
-void ToggleStats(const char *) {
+int ToggleStats(int argc, char ** argv) {
     ShowStatistics = !ShowStatistics;
     if (ShowStatistics) {
         NextStatsTime.FromNow(StatisticsPeriod);
     } else {
         NextStatsTime.Disable();
     }
+    return 0;
 }
 
 // *****************************************************************************
-void ToggleSending(const char *) {
-    Sending = !Sending;
+int ToggleSending(int argc, char ** argv) {
+    enableCAN = !enableCAN;
+    GwSetInt(CANENBALE, enableCAN);
     Serial.print("Message sending ");
-    Serial.println(Sending ? "enabled" : "disabled");
+    Serial.println(enableCAN ? "enabled" : "disabled");
+    return 0;
 }
 
 // *****************************************************************************
-void ToggleShowSentMessages(const char *) {
+int ToggleShowSentMessages(int argc, char ** argv) {
     ShowSentMessages = !ShowSentMessages;
+    return 0;
 }
 
 // *****************************************************************************
-void ToggleForward(const char *) {
+int ToggleForward(int argc, char ** argv) {
     EnableForward = !EnableForward;
     NMEA2000.EnableForward(EnableForward);
 
     Serial.print("Show bus messages ");
     Serial.println(EnableForward ? "enabled" : "disabled");
+    return 0;
 }
 
 // *****************************************************************************
-void ClearStatistics(const char *) {
+int ClearStatistics(int argc, char ** argv) {
     N2kMsgSentCount = 0;
     N2kMsgFailCount = 0;
     Serial.println("Message statistics cleared");
+    return 0;
 }
 
 // *****************************************************************************
-bool HasParam(const char *&Params) {
-    if (Params == 0) return false;
-
-    while (*Params == ' ' || *Params == '\t') Params++;  // Pass spaces to check param exist
-    if (*Params == 0) {
-        return false;  // Param not defined.
-    }
-
+bool HasParam(int argc, char ** argv) {
+    if (argc < 2) return false;
     return true;
 }
 
 // *****************************************************************************
 template <typename T>
-bool GetParam(const char *&Params, T &Value, T Def = 0) {
+bool GetParam(int argc, char ** argv, T &Value, T Def = 0) {
     Value = Def;
     char *ParamEnd;
-    Value = strtol(Params, &ParamEnd, 10);
-    bool ret = (Params != ParamEnd && (*ParamEnd == 0 || *ParamEnd == ' ' || *ParamEnd == '\t'));
-    Params = ParamEnd;
-    return ret;
+    Value = strtol(argv[argc], &ParamEnd, 10);
+    return true;
 }
 
 // *****************************************************************************
-void ToggleMsgSending(const char *Params) {
-    if (!HasParam(Params)) {
+int ToggleMsgSending(int argc, char ** argv) {
+    if (!HasParam(argc, argv)) {
         Serial.println("Message index not defined");
-        return;
+        return 0;
     }
 
     size_t MsgIndex;
-    if (!GetParam(Params, MsgIndex) || MsgIndex >= nN2kSendMessages) {
+    if (!GetParam(1, argv, MsgIndex) || MsgIndex >= nN2kSendMessages) {
         Serial.println("Invalid message index");
-        return;
+        return 0;
     }
 
     N2kSendMessages[MsgIndex].Enable(!N2kSendMessages[MsgIndex].Scheduler.IsEnabled());
     Serial.print(N2kSendMessages[MsgIndex].Description);
     Serial.print("  ");
     Serial.println(N2kSendMessages[MsgIndex].Scheduler.IsEnabled() ? "enabled" : "disabled");
+    // Update the saved map of enabled messages
+    saveMap();
+    return 0;
 }
 
-void ToggleYD(const char *params) {
+int ToggleYD(int argc, char ** argv) {
     enableYD = !enableYD;
+    GwSetInt(YDENABLE, enableYD);
     Serial.printf("YD sending %s\n", enableYD ? "enabled" : "disabled");
+    return 0;
 }
 
 // *****************************************************************************
-void SendMessageNow(const char *Params) {
-    if (!HasParam(Params)) {
+int SendMessageNow(int argc, char ** argv) {
+    if (!HasParam(argc, argv)) {
         Serial.println("Message index not defined");
-        return;
+        return 0;
     }
 
     size_t MsgIndex;
-    if (!GetParam(Params, MsgIndex) || MsgIndex >= nN2kSendMessages) {
+    if (!GetParam(1, argv, MsgIndex) || MsgIndex >= nN2kSendMessages) {
         Serial.println("Invalid message index");
-        return;
+        return 0;
     }
 
     N2kSendMessages[MsgIndex].SendFunction();
     Serial.print(N2kSendMessages[MsgIndex].Description);
     Serial.println("  sent");
+   return 0;
 }
 
 // *****************************************************************************
-void SetMessagePeriod(const char *Params) {
-    if (!HasParam(Params)) {
-        Serial.println("Message index not defined");
-        return;
-    }
-
-    size_t MsgIndex;
-    if (!GetParam(Params, MsgIndex) || MsgIndex >= nN2kSendMessages) {
-        Serial.println("Invalid message index");
-        return;
-    }
-
-    if (HasParam(Params)) {
-        uint32_t Period;
-        if (!GetParam(Params, Period) || Period > 60000) {
-            Serial.println("Invalid period");
-            return;
-        }
-
-        N2kSendMessages[MsgIndex].Scheduler.SetPeriod(Period);
-    }
-    Serial.print(N2kSendMessages[MsgIndex].Description);
-    Serial.print("  period is ");
-    Serial.println(N2kSendMessages[MsgIndex].Scheduler.GetPeriod());
-}
-
-// *****************************************************************************
-void SetMessageOffset(const char *Params) {
-    if (!HasParam(Params)) {
-        Serial.println("Message index not defined");
-        return;
-    }
-
-    size_t MsgIndex;
-    if (!GetParam(Params, MsgIndex) || MsgIndex >= nN2kSendMessages) {
-        Serial.println("Invalid message index");
-        return;
-    }
-
-    if (HasParam(Params)) {
-        uint32_t Offset;
-        if (!GetParam(Params, Offset) || Offset > 60000) {
-            Serial.println("Invalid offset");
-            return;
-        }
-
-        N2kSendMessages[MsgIndex].Scheduler.SetOffset(Offset);
-    }
-    Serial.print(N2kSendMessages[MsgIndex].Description);
-    Serial.print("  offset is ");
-    Serial.println(N2kSendMessages[MsgIndex].Scheduler.GetOffset());
-}
-
-// *****************************************************************************
-void EnableAllMessages(const char *) {
+int EnableAllMessages(int argc, char ** argv) {
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         N2kSendMessages[i].Enable(true);
     }
     Serial.println("All messages enabled");
+    return 0;
 }
 
 // *****************************************************************************
-void DisableAllMessages(const char *) {
+int DisableAllMessages(int argc, char ** argv) {
+    Serial.printf("Disabling all messages\n");
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         N2kSendMessages[i].Enable(false);
     }
     Serial.println("All messages disabled");
+    return 0;
 }
 
 // *****************************************************************************
-void ListMessages(const char *) {
+int ListMessages(int argc, char ** argv) {
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         Serial.print("    ");
         Serial.print(i);
@@ -870,10 +876,12 @@ void ListMessages(const char *) {
         Serial.print(N2kSendMessages[i].Scheduler.IsEnabled() ? "(enabled)  " : "(disabled) ");
         Serial.println(N2kSendMessages[i].Description);
     }
+    return 0;
 }
 
-void printSummary() {
-    Serial.printf("N2K %s YD %s\n", Sending == true ? "On" : "Off", enableYD ? "On" : "Off");
+int printSummary(int argc, char ** argv) {
+    Serial.printf("N2K %s YD %s\n", enableCAN == true ? "On" : "Off", enableYD ? "On" : "Off");
+    return 0;
 }
 
 //*****************************************************************************
@@ -952,3 +960,19 @@ void ListDevices(Stream &stream, bool force = false) {
     }
 }
 
+// add the commands to the shell
+void addCommands() {
+    Serial.printf("Adding N2k sender commands to shell\n");
+    shell.addCommand(F("can \t\tToggle sending all N2k CAN messages"), ToggleSending);
+    shell.addCommand(F("stats \t\tToggle displaying N2k stats"), ToggleStats);
+    shell.addCommand(F("clear \t\tClear N2k statistics"), ClearStatistics);
+    shell.addCommand(F("en \t\tEnable all messages"), EnableAllMessages);
+    shell.addCommand(F("dis \t\tDisable all messages"), DisableAllMessages);
+    shell.addCommand(F("msgx \t\tToggle the sending of message index x"), ToggleMsgSending);
+    shell.addCommand(F("show \t\tToggle show sent messages"), ToggleShowSentMessages);
+    shell.addCommand(F("bus \t\tToggle show other bus messages"), ToggleForward);
+    shell.addCommand(F("listmsg \t\tList available messages"), ListMessages);
+    shell.addCommand(F("sendx \t\tSends message x on request"), SendMessageNow);
+    shell.addCommand(F("yd \t\tToggle sending YD broadcast UDP data"), ToggleYD);
+    shell.addCommand(F("summary \t\tShow the state of the toggles"), printSummary);
+}

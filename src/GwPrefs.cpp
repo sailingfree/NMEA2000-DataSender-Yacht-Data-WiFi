@@ -48,6 +48,10 @@ void GwPrefsInit() {
     }
 }
 
+void GwAddReg(const char * key) {
+    Reg.push_back(key);
+}
+
 void GwPrint(Stream& s) {
     //   GwPrefsInit();
     s.printf("Preferences\n");
@@ -97,4 +101,13 @@ String GwSetVal(const char* key, String newval) {
     curval = shellPref.getString(key);
     shellPref.end();
     return curval;
+}
+
+int32_t GwSetInt(const char * key, int32_t val) {
+    String temp = GwSetVal(key, String(val));
+    return temp.toInt();
+}
+
+int32_t GwGetInt(const char * key) {
+    return GwGetVal(key, String(0)).toInt();
 }

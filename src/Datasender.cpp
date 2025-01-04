@@ -150,21 +150,20 @@ void setup() {
     tv.tv_sec = epoch;
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
-    setupN2ksender();
 
-    // Init the interactive shell
+    // Init the interactive shell using the serial connection 
     initGwShell();
     setShellSource(&Serial);
+    
+    setupN2ksender();
 
     rotary_setup();
-//    prompt();
 }
 
 // *****************************************************************************
 void loop() {
     handleN2kMessages();
 
-//    CheckCommand();
     wifiWork();
     wifiCheck();
 
@@ -180,96 +179,3 @@ void loop() {
    handleShell();
 }
 
-using tCommandFunction = void (*)(const char *Params);
-
-struct tCommand {
-    const char *const Command;
-    const char *const Usage;
-    const char *const Description;
-    tCommandFunction CommandFunction;
-};
-
-void ListCommands(const char *Command);
-
-tCommand Commands[] = {
-    {"?", 0, "List commands", ListCommands},
-    {"p", 0, "Toggle sending", ToggleSending},
-    {"stat", 0, "Toggle stat printing", ToggleStats},
-    {"cl", 0, "Clear statistics", ClearStatistics},
-    {"e", 0, "Enable all messages", EnableAllMessages},
-    {"d", 0, "Disable all messages", DisableAllMessages},
-    {"s", 0, "Toggle show sent messages", ToggleShowSentMessages},
-    {"fwd", 0, "Toggle show other bus messages", ToggleForward},
-    {"msgs", 0, "List messages", ListMessages},
-    {"msg", "msg <x>", "Toggle message x sending", ToggleMsgSending},
-    {"once", "once <x>", "Sends message x on request", SendMessageNow},
-    {"yd", 0, "Toggle sending YD broadcast UDP data", ToggleYD},
-    {"period", "period <x> [p]",
-     "Set message x period to p. If p is not defined, just shows period.",
-     SetMessagePeriod},
-    {"offset", "offset <x> [o]",
-     "Set message x offset to o. If o is not defined, just shows offset.",
-     SetMessageOffset}};
-
-size_t nCommands = sizeof(Commands) / sizeof(tCommand);
-
-// *****************************************************************************
-void ListCommands(const char *Command) {
-    Serial.println();
-    Serial.println("Commands:");
-    char Info[200];
-    for (size_t i = 0; i < nCommands; i++) {
-        strcpy(Info, "  ");
-        strcat(Info, Commands[i].Usage != 0 ? Commands[i].Usage
-                                            : Commands[i].Command);
-        size_t len = strlen(Info);
-        if (len < 16) {
-            memset(Info + len, ' ', 16 - len);
-            Info[16] = 0;
-        }
-        strcat(Info, "- ");
-        strcat(Info, Commands[i].Description);
-        Serial.println(Info);
-    }
-    Serial.println();
-    prompt();
-}
-
-// *****************************************************************************
-void CheckCommand() {
-    static char Command[20] = {0};
-    static size_t CommandPos = 0;
-
-    if (Serial.available()) {
-        char ch = Serial.read();
-        if (ch == '\n') {
-            char *Params = strchr(Command, ' ');
-            bool FoundCommand = false;
-            if (Params != 0) {
-                *Params = 0;
-                Params++;
-            }
-            for (size_t i = 0; i < nCommands; i++) {
-                if (strcmp(Command, Commands[i].Command) == 0) {
-                    Commands[i].CommandFunction(Params);
-                    FoundCommand = true;
-                    break;
-                }
-            }
-            if (!FoundCommand) {
-                Serial.print("Unknown command ");
-                Serial.println(Command);
-                prompt();
-            }
-            CommandPos = 0;
-            Command[CommandPos] = 0;
-        } else {
-            Serial.printf("%c", ch);
-            if (ch >= ' ' && CommandPos + 1 < sizeof(Command)) {
-                Command[CommandPos] = ch;
-                CommandPos++;
-                Command[CommandPos] = 0;
-            }
-        }
-    }
-}
