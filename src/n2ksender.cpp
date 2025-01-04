@@ -189,6 +189,7 @@ void SendN2kMsg(const tN2kMsg &N2kMsg) {
     }
 
     if (enableCAN) {
+        Serial.printf("Going to send PGN %d\n", N2kMsg.PGN);
         if (NMEA2000.SendMsg(N2kMsg)) {
             N2kMsgSentCount++;
         } else {
@@ -232,14 +233,20 @@ void SendN2kMessages() {
 }
 
 void handleN2kMessages() {
-    if (enableCAN || enableYD) SendN2kMessages();
-    NMEA2000.ParseMessages();
-    if (ShowStatistics) {
-        if (NextStatsTime.IsTime()) {
-            NextStatsTime.FromNow(StatisticsPeriod);
-            char buf[200];
-            snprintf(buf, 200, "\nMessages sent:%lu, sent failed:%lu\n", N2kMsgSentCount, N2kMsgFailCount);
-            Serial.print(buf);
+    if (enableCAN || enableYD)
+        SendN2kMessages();
+
+    if (enableCAN) {
+        // Only parse if CAN enabled to stop bus scans and product info messages
+        NMEA2000.ParseMessages();
+        if (ShowStatistics) {
+            if (NextStatsTime.IsTime()) {
+                NextStatsTime.FromNow(StatisticsPeriod);
+                char buf[200];
+                snprintf(buf, 200, "\nMessages sent:%lu, sent failed:%lu\n",
+                         N2kMsgSentCount, N2kMsgFailCount);
+                Serial.print(buf);
+            }
         }
 
         CheckLoopTime();
@@ -423,16 +430,20 @@ void SendRouteInfo() {
 
 // *****************************************************************************
 void SendN2kProductInformation() {
-    NMEA2000.SendProductInformation();
-    N2kMsgSentCount++;
+    if(enableCAN) {
+        NMEA2000.SendProductInformation();
+        N2kMsgSentCount++;
+    }
 }
 
 // *****************************************************************************
 void SendN2kIsoAddressClaim() {
     // Note that sometime NMEA Reader gets grazy, when ISO Address claim will be sent periodically.
     // If that happens, reopen NMEA Reader.
-    NMEA2000.SendIsoAddressClaim();
-    N2kMsgSentCount++;
+    if(enableCAN) {
+        NMEA2000.SendIsoAddressClaim();
+        N2kMsgSentCount++;
+    }
 }
 
 // *****************************************************************************
@@ -964,7 +975,7 @@ void ListDevices(Stream &stream, bool force = false) {
 void addCommands() {
     Serial.printf("Adding N2k sender commands to shell\n");
     shell.addCommand(F("can \t\tToggle sending all N2k CAN messages"), ToggleSending);
-    shell.addCommand(F("stats \t\tToggle displaying N2k stats"), ToggleStats);
+    shell.addCommand(F("stats \tToggle displaying N2k stats"), ToggleStats);
     shell.addCommand(F("clear \tClear N2k statistics"), ClearStatistics);
     shell.addCommand(F("en \t\tEnable all messages"), EnableAllMessages);
     shell.addCommand(F("dis \t\tDisable all messages"), DisableAllMessages);
@@ -972,7 +983,7 @@ void addCommands() {
     shell.addCommand(F("show \t\tToggle show sent messages"), ToggleShowSentMessages);
     shell.addCommand(F("bus \t\tToggle show other bus messages"), ToggleForward);
     shell.addCommand(F("listmsg \tList available messages"), ListMessages);
-    shell.addCommand(F("sendx \t\Sends message x on request"), SendMessageNow);
+    shell.addCommand(F("sendx \tSends message x on request"), SendMessageNow);
     shell.addCommand(F("yd \t\tToggle sending YD broadcast UDP data"), ToggleYD);
     shell.addCommand(F("summary \tShow the state of the toggles"), printSummary);
 }
