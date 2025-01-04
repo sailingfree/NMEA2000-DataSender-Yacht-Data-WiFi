@@ -158,16 +158,16 @@ int reboot(int argc, char** argv) {
 // Initialise the shell and add the commands
 void initGwShell() {
     Serial.println("Initialisting the shell");
-    shell.addCommand(F("id"), showID);
-    shell.addCommand(F("list"), list);
-    shell.addCommand(F("sys"), sys);
-    shell.addCommand(F("net"), net);
-    shell.addCommand(F("getval"), getval);
-    shell.addCommand(F("setval"), setval);
-    shell.addCommand(F("quit"), quit);
-    shell.addCommand(F("logger"), logger);
-    shell.addCommand(F("reboot"), reboot);
-    shell.addCommand(F("msgs"), messages);
+    shell.addCommand(F("id \t\tshow the build details"), showID);
+    shell.addCommand(F("list \t\tList the NMEA2000 devices on the bus"), list);
+    shell.addCommand(F("sys \t\tShow system information"), sys);
+    shell.addCommand(F("net \t\tshow the network status"), net);
+    shell.addCommand(F("getval \tGet a value from the preference store"), getval);
+    shell.addCommand(F("setval \tset a value in the preference store"), setval);
+    shell.addCommand(F("quit \t\tDisconnect the terminal session (telnet)"), quit);
+    shell.addCommand(F("logger \tForward all messages to the console"), logger);
+    shell.addCommand(F("reboot \tRestart the board"), reboot);
+    shell.addCommand(F("msgs \t\tPrint the messages we have received"), messages);
 }
 
 // Print a prompt to the terminal
