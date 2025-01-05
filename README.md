@@ -50,3 +50,5 @@ Called the DWIN screen i think
 https://www.reddit.com/r/arduino/comments/1bmywvg/trying_to_get_a_dmt48270c043_04wnz11_to_display/
 
 
+// Use this calibration code in setup():
+  uint16_t calData[5] = { 253, 3621, 248, 3625, 2 };

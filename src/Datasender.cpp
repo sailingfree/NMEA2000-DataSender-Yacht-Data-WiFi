@@ -92,16 +92,50 @@ WiFiUDP udp;
 // The telnet server for the shell.
 WiFiServer telnetServer(23);
 
+// Touch calibration. If true then run the touch calibration once
+// this stores the results in nvram and the next boot will use those values
+bool runCalibration = false;
+
 // *****************************************************************************
 void setup() {
-    uint8_t chipid[6];
-    uint32_t id = 0;
-
-    // Initialize serial port.
     Serial.begin(115200);
     delay(2000); // Give a bit time for console to be ready
                  // get the MAC address
     Serial.printf("Setting up\n");
+
+    GwPrefsInit();
+
+    runCalibration = GwGetInt(TFTCALIB);
+
+    if (runCalibration) {
+        // Create a tft object for the touch calibration
+        TFT_eSPI tft(TFT_HEIGHT, TFT_WIDTH);
+
+        // Initialise the TFT screen
+        tft.init();
+
+        // Set the rotation before we calibrate
+        tft.setRotation(0);
+
+        // Calibrate the touch screen and retrieve the scaling factors
+        touch_calibrate(tft);
+
+        // reset th request so we dont try next time
+        GwSetInt(TFTCALIB, 0);
+        
+        Serial.printf("Calibration done, rebooting...");
+        Serial.flush();
+        delay(5000);
+
+        // And reset
+        ESP.restart();
+    }
+
+    uint8_t chipid[6];
+    uint32_t id = 0;
+
+    // Initialize serial port.
+ 
     esp_err_t fuse_error = esp_efuse_mac_get_default(chipid);
     if (fuse_error) {
         Serial.printf("efuse error: %d\n", fuse_error);
@@ -114,16 +148,14 @@ void setup() {
         id += (chipid[i] << (7 * i));
         macAddress += String(chipid[i], HEX);
     }
-    GwPrefsInit();
-
-    // Generate the hostname by appending the last two octets of the mac address
+     // Generate the hostname by appending the last two octets of the mac address
     // to make it unique
     String hname = "n2ktester";
     host_name = hname + String(chipid[4], HEX) + String(chipid[5], HEX);
 
-   // Init the display
-    displayInit(); 
- 
+    // Init the display
+    displayInit();
+
     // Start the wifi
     wifiSetup(host_name);
 
@@ -131,7 +163,8 @@ void setup() {
     initMdns(host_name);
 
     // Register the services
-    addMdnsService("telnet", "tcp", 23);  // Telnet server of RemoteDebug, register as telnet
+    addMdnsService("telnet", "tcp",
+                   23); // Telnet server of RemoteDebug, register as telnet
 
     // Start the telnet server
     telnetServer.begin();
@@ -151,10 +184,10 @@ void setup() {
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
 
-    // Init the interactive shell using the serial connection 
+    // Init the interactive shell using the serial connection
     initGwShell();
     setShellSource(&Serial);
-    
+
     setupN2ksender();
 
     rotary_setup();
@@ -162,20 +195,21 @@ void setup() {
 
 // *****************************************************************************
 void loop() {
-    handleN2kMessages();
+    if (!runCalibration) {
+        handleN2kMessages();
 
-    wifiWork();
-    wifiCheck();
+        wifiWork();
+        wifiCheck();
 
-    rotary_loop();
-    
-    // Update the display and handle touch events
-    handleDisplay();
-    
-    // handle the telnet session
-    handleTelnet();
+        rotary_loop();
 
-    // And run and shell commands
-   handleShell();
+        // Update the display and handle touch events
+        handleDisplay();
+
+        // handle the telnet session
+        handleTelnet();
+
+        // And run and shell commands
+        handleShell();
+    }
 }
-

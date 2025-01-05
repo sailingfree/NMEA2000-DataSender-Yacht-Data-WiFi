@@ -44,6 +44,7 @@ void GwPrefsInit() {
         Reg.push_back(GWHOST);
         Reg.push_back(GWPASS);
         Reg.push_back(LASTNODEADDRESS);
+        Reg.push_back(TFTCALIB);
         doneInit = true;
     }
 }

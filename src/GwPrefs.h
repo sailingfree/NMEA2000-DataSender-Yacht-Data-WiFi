@@ -52,3 +52,6 @@ void GwAddReg(const char * key);
 
 // The N2K node address we last used
 #define LASTNODEADDRESS "LastNodeAddress"
+
+// Flag to request TFT calibration
+#define TFTCALIB    "tftcalib"

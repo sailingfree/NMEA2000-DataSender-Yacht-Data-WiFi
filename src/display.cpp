@@ -6,17 +6,14 @@
 #include <myFonts.h>
 #include <display/lv_display_private.h>
 #include <touch_calibrate.h>
-
-#define TFT_ROTATION LV_DISPLAY_ROTATION_90
-/*Set to your screen resolution and rotation*/
-#define TFT_HOR_RES (TFT_WIDTH)  // TFT_HEIGHT
-#define TFT_VER_RES (TFT_HEIGHT) // TFT_WIDTH
+#include <StringStream.h>
+#include <SysInfo.h>
 
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
  * in bytes*/
-#define DRAW_BUF_SIZE (TFT_HOR_RES * TFT_VER_RES / 10 * (LV_COLOR_DEPTH / 8))
-// uint32_t draw_buf[DRAW_BUF_SIZE / 4];
+#define DRAW_BUF_SIZE (TFT_WIDTH * TFT_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
 
+// The display object
 TFT_eSPI * tft;
 
 static lv_obj_t *screen[SCR_MAX];
@@ -24,9 +21,11 @@ static InfoBar *bars[SCR_MAX];
 // define the text areas
 static lv_obj_t *textAreas[SCR_MAX];
 
-static lv_obj_t *createMain();
-
-
+// Forward decls
+lv_obj_t *createMain();
+lv_obj_t * createCanScreen();
+lv_obj_t * createMsgScreen();
+lv_obj_t* createSysInfoScreen();
 
 #if LV_USE_LOG != 0
 void my_print(lv_log_level_t level, const char *buf) {
@@ -58,10 +57,12 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
 
     bool touched = tft->getTouch(&touchX, &touchY, 600);
 
+
     if (!touched) {
         data->state = LV_INDEV_STATE_REL;
     } else {
         data->state = LV_INDEV_STATE_PR;
+        Serial.printf("Touch: %d %d\n", touchX, touchY);
 
         /*Set the coordinates*/
         data->point.x = touchX;
@@ -100,9 +101,6 @@ void displayInit() {
     LVGL_Arduino += String('V') + lv_version_major() + "." +
                     lv_version_minor() + "." + lv_version_patch();
 
-    Serial.begin(115200);
-    Serial.println(LVGL_Arduino);
-
     draw_buf = (uint32_t *)malloc(DRAW_BUF_SIZE);
     if (!draw_buf) {
         Serial.printf("Failed to allocate %d bytes for draw_buf\n",
@@ -118,28 +116,51 @@ void displayInit() {
 #if LV_USE_LOG != 0
     lv_log_register_print_cb(my_print);
 #endif
+    lv_display_t * disp;
 
-    lv_display_t * disp = lv_display_create(TFT_WIDTH, TFT_HEIGHT);
+#if LV_USE_TFT_ESPI
+    /*TFT_eSPI can be enabled lv_conf.h to initialize the display in a simple way*/
+    disp = lv_tft_espi_create(DISP_WIDTH, DISP_HEIGHT, draw_buf, sizeof(draw_buf));
+    lv_display_set_rotation(disp, TFT_ROTATION);
+
+#else
+    disp = lv_display_create(DISP_WIDTH, DISP_HEIGHT);
     tft = new TFT_eSPI(TFT_WIDTH, TFT_HEIGHT);
-    // Read the calibration dta from SPIFFS if it exists
-    bool status = touch_calibrate(tft);
+    tft->begin();          /* TFT init */
+    tft->setRotation(TFT_ROTATION);
+
+    // Read the calibration data from SPIFFS if it exists
+    bool status = touch_calibrate_apply(tft);
     if(status) {
         Serial.printf("Touch calibration successful");
     } else {
         Serial.printf("Touch calibration unsuccessful");
+        Serial.printf("Using hard coded values from previous run\n");
+        // Use this calibration code in setup():
+        // touchCalibration_rotate = parameters[4] & 0x01;
+        // touchCalibration_invert_x = parameters[4] & 0x02;
+        // touchCalibration_invert_y = parameters[4] & 0x04;
+        uint16_t calData[5] = { 258, 3581, 215, 3658, 0x02 };
+        tft->setTouch(calData);
     }
 
-    tft->begin();          /* TFT init */
-    tft->setRotation(TFT_ROTATION);
+ 
+#endif
+
+
     lv_display_set_flush_cb(disp, flush_cb);
     lv_display_set_buffers(disp, (void *)draw_buf, NULL, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);  
+//    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
-        /*Initialize the (dummy) input device driver*/
+    /*Initialize the (dummy) input device driver*/
     lv_indev_t * indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER); /*Touchpad should have POINTER type*/
     lv_indev_set_read_cb(indev, my_touchpad_read);
  
     screen[SCR_MAIN] = createMain();
+    screen[SCR_MSG]  = createMsgScreen();
+    screen[SCR_CAN] = createCanScreen();
+    screen[SCR_SYSINFO] = createSysInfoScreen();
 
     lv_scr_load(screen[SCR_MAIN]);
     handleDisplay();
@@ -158,7 +179,7 @@ static void setupCommonstyles(lv_obj_t *obj) {
     lv_obj_set_style_pad_gap(obj, padding, 0);
 
     lv_obj_set_height(obj, BODY_HEIGHT);
-    lv_obj_set_width(obj, TFT_WIDTH);
+    lv_obj_set_width(obj, DISP_WIDTH);
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
 
@@ -171,11 +192,13 @@ static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
 
 static void setupMenu(lv_obj_t *screen) {
     MenuBar *menuBar = new MenuBar(screen, BAR_ROW_BOTTOM);
+    menuBar->addButton("Home", SCR_MAIN);
+    menuBar->addButton("MSG", SCR_MSG);
+    menuBar->addButton("CAN", SCR_CAN);
+    menuBar->addButton("DATA", SCR_SYSINFO);
 }
 
-static void buttonHandler(lv_event_t *e) { Serial.printf("Pressed:\n"); }
-
-static lv_obj_t *createMain() {
+lv_obj_t *createMain() {
     lv_obj_t *screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
     setupHeader(SCR_MAIN, screen, "NMEA2000 Tester");
@@ -189,18 +212,75 @@ static lv_obj_t *createMain() {
     lv_style_set_pad_all(&style, 0);
     lv_obj_t *body = lv_obj_create(screen);
     lv_obj_set_pos(body, 0, BAR_HEIGHT);
-    lv_obj_set_width(body, TFT_WIDTH);
+    lv_obj_set_width(body, DISP_WIDTH);
     lv_obj_set_height(body, BODY_HEIGHT);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_style(body, &style, 0);
-
-    lv_event_code_t code = LV_EVENT_PRESSED;
-    lv_obj_add_event_cb(body, buttonHandler, code, (void *)NULL);
     setupMenu(screen);
 
     return screen;
 }
 
+lv_obj_t* createSysInfoScreen() {
+    lv_obj_t* screen = lv_obj_create(NULL);
+    setupCommonstyles(screen);
+    setupHeader(SCR_SYSINFO, screen, "System Info");
+
+    // Create a text area to display the info text
+    textAreas[SCR_SYSINFO] = lv_textarea_create(screen);
+    lv_obj_set_size(textAreas[SCR_SYSINFO], DISP_WIDTH, BODY_HEIGHT);
+    lv_obj_align(textAreas[SCR_SYSINFO], LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(textAreas[SCR_SYSINFO], &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_update_flag(textAreas[SCR_SYSINFO], LV_OBJ_FLAG_SCROLLABLE, true);
+    setupMenu(screen);
+    return screen;
+}
+
+lv_obj_t* createMsgScreen() {
+    lv_obj_t* screen = lv_obj_create(NULL);
+    setupCommonstyles(screen);
+    setupHeader(SCR_SYSINFO, screen, "NMEA200 Config");
+
+    setupMenu(screen);
+    return screen;
+}
+
+lv_obj_t* createCanScreen() {
+    lv_obj_t* screen = lv_obj_create(NULL);
+    setupCommonstyles(screen);
+    setupHeader(SCR_SYSINFO, screen, "NMEA2000 CAN");
+
+    setupMenu(screen);
+    return screen;
+}
+
 void displayText(const char * txt) {
     Serial.printf("Displaying '%s'\n", txt);
+}
+
+// Refresh the info in the sysinfo page
+void refreshSysinfo() {
+    StringStream s;
+    s.clear();
+    getSysInfo(s);
+    getNetInfo(s);
+    lv_textarea_set_text(textAreas[SCR_SYSINFO], s.data.c_str());
+}
+
+void buttonHandler(lv_event_t* e) {
+    void* target = lv_event_get_user_data(e);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+    Screens s = reinterpret_cast<Screens&>(target);
+#pragma GCC diagnostic pop
+    lv_event_code_t code = lv_event_get_code(e);
+    Serial.printf("Button handler scr %d code %d\n", target, code);
+    if (code == LV_EVENT_PRESSED) {
+        if (s >= 0 && s < SCR_MAX && screen[s]) {
+            refreshSysinfo();
+            lv_scr_load(screen[s]);
+        }
+    }
 }
