@@ -201,8 +201,6 @@ void loop() {
         wifiWork();
         wifiCheck();
 
-        rotary_loop();
-
         // Update the display and handle touch events
         handleDisplay();
 

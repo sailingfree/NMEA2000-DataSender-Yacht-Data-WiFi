@@ -49,15 +49,30 @@ void rotary_onButtonClick() {
     Serial.println(" milliseconds after restart");
 }
 
-void rotary_loop() {
+#define ROT_MAX 50
+static long last=ROT_MAX;
+RotaryEV rotary_loop() {
+    RotaryEV result = ROT_NONE;
+
     // dont print anything unless value changed
     if (rotaryEncoder.encoderChanged()) {
-        Serial.print("Value: ");
-        Serial.println(rotaryEncoder.readEncoder());
+        long val = rotaryEncoder.readEncoder();
+
+        // This next reverses the encoders built in direction. I want clockwise to go UP
+        if(val > last) {
+            Serial.printf("rotary : DOWN %d\n", val);
+            result = ROT_DOWN;
+        } else {
+            Serial.printf("rotary : UP %d\n", val);
+            result = ROT_UP;
+        }
+        last = val;
     }
     if (rotaryEncoder.isEncoderButtonClicked()) {
         rotary_onButtonClick();
+        result = ROT_CLICK;
     }
+    return result;
 }
 
 long rotary_getvalue() {
@@ -72,10 +87,12 @@ void rotary_setup() {
     // we must initialize rotary encoder
     rotaryEncoder.begin();
     rotaryEncoder.setup(readEncoderISR);
+
     // set boundaries and if values should cycle or not
-    // in this example we will set possible values between 0 and 16;
     bool circleValues = true;
-    rotaryEncoder.setBoundaries(0, 16, circleValues);  // minValue, maxValue, circleValues true|false (when max go to min and vice versa)
+    rotaryEncoder.setBoundaries(0, ROT_MAX, circleValues);  // minValue, maxValue, circleValues true|false (when max go to min and vice versa)
+    // set to mid range
+    rotaryEncoder.setEncoderValue(ROT_MAX / 2);
 
     /*Rotary acceleration introduced 25.2.2021.
      * in case range to select is huge, for example - select a value between 0 and 1000 and we want 785

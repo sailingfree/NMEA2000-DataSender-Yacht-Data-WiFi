@@ -8,6 +8,7 @@
 #include <touch_calibrate.h>
 #include <StringStream.h>
 #include <SysInfo.h>
+#include <rotary_encoder.h>
 
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
  * in bytes*/
@@ -168,8 +169,13 @@ void displayInit() {
 }
 
 void handleDisplay() {
+    RotaryEV rotev;
     static const uint32_t tick_delay = 10;
     lv_task_handler(); /* let the GUI do its work */
+    rotev = rotary_loop();
+    if(rotev) {
+        Serial.printf("ROTARY EV %d\n", rotev);
+    }
     lv_tick_inc(tick_delay);
 }
 
