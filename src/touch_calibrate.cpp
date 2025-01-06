@@ -22,7 +22,7 @@
 // setup()
 void touch_calibrate(TFT_eSPI &tft) {
     uint16_t calData[5];
-    uint8_t calDataOK = 0;
+//    uint8_t calDataOK = 0;
 
     // check file system
     if (!SPIFFS.begin()) {

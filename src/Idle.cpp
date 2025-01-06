@@ -28,7 +28,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <Arduino.h>
 #include <Idle.h>
 
-static bool doingCalib = false;
+//static bool doingCalib = false;
 static const int NSAMPLES = 100;
 static uint64_t ops[NSAMPLES][2];
 static int cpuAvg[2];

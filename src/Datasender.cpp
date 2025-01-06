@@ -76,7 +76,7 @@ String Model = "Naiad N2K Sender";
 Stream *Console = &Serial;
 
 void prompt() {
-    printSummary();
+    printSummary(1, NULL);
     Serial.printf("?<lf> for help. >");
 }
 

@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <display.h>
+#include <Indicator.h>
 #include <myFonts.h>
+#include <GwPrefs.h>
+#include <display/lv_display_private.h>
 
 
 
@@ -198,5 +201,57 @@ lv_obj_t* MenuBar::addActionButton(const char* label, void (*ptr)(lv_event_t* e)
     lv_obj_add_event_cb(b, ptr, LV_EVENT_CLICKED, NULL);
 
     return l;
+}
+
+// Event callback for the StateButton
+static void callback(lv_event_t * e) {
+    StateButton * b = (StateButton * )lv_event_get_user_data(e);
+    Serial.printf("StateButton callback for %s\n", b->prefname);
+    if(b->cb) {
+        b->cb(0, NULL);
+    }
+    b->update();
+}
+
+StateButton::StateButton(lv_obj_t * parent, const char * label, uint32_t x, uint32_t y, const char * pref)  {
+    prefname = pref;
+    container = lv_obj_create(parent);
+    lv_obj_set_pos(container, x, y);
+    lv_obj_set_width(container, SB_WIDTH - (2 * padding));
+    lv_obj_set_height(container, SB_HEIGHT - (2 * padding));
+
+    lv_style_init(&style);
+    lv_style_set_border_width(&style, border);
+    lv_obj_add_style(container, &style, 0);
+
+    lv_obj_set_layout(container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+
+    value = lv_label_create(container);
+    lv_style_init(&value_style);
+    lv_style_set_text_font(&value_style, &RobotoCondensedVariableFont_wght52);
+    lv_style_set_text_color(&value_style, lv_color_white());
+    lv_obj_add_style(value, &value_style, 0);
+    lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_label_set_text(value, label);
+
+    lv_style_set_bg_opa(&style, LV_OPA_100);
+    lv_obj_add_style(container, &style, 0);
+    lv_obj_add_event_cb(container, callback, LV_EVENT_PRESSED, this);
+    update();
+}
+
+void StateButton::update() {
+    val = GwGetInt(prefname);
+    Serial.printf("pref %s -> %d\n", prefname, val);
+    if(val) {
+        lv_obj_set_style_bg_color(container, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
+        Serial.printf("GREEN\n");
+    } else {
+        lv_obj_set_style_bg_color(container, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN);
+        Serial.printf("RED\n");
+    }
 }
 

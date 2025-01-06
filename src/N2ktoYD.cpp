@@ -64,11 +64,11 @@ void N2kToYD_Can(const tN2kMsg &msg, char *MsgBuf) {
     rawtime = (DaysSince1970 * 3600 * 24) + SecondsSinceMidnight;  // Create time from GNSS time;
     ts = *localtime(&rawtime);
     strftime(time_str, sizeof(time_str), "%T.000", &ts);  // Create time string
-
-    snprintf(MsgBuf, 25, "%s R %0.8x", time_str, canId);  // Set time and canID
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+    snprintf(MsgBuf, 25, "%s R %.8x", time_str, canId);  // Set time and canID
 
     for (i = 0; i < len; i++) {
-        snprintf(Byte, 4, " %0.2x", msg.Data[i]);  // Add data fields
+        snprintf(Byte, 4, " %.2x", msg.Data[i]);  // Add data fields
         strcat(MsgBuf, Byte);
     }
 }

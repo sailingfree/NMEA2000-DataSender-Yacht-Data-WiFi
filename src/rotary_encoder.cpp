@@ -60,10 +60,10 @@ RotaryEV rotary_loop() {
 
         // This next reverses the encoders built in direction. I want clockwise to go UP
         if(val > last) {
-            Serial.printf("rotary : DOWN %d\n", val);
+            Serial.printf("rotary : DOWN %ld\n", val);
             result = ROT_DOWN;
         } else {
-            Serial.printf("rotary : UP %d\n", val);
+            Serial.printf("rotary : UP %ld\n", val);
             result = ROT_UP;
         }
         last = val;

@@ -42,67 +42,16 @@ typedef enum {
 #define ROW1            (BAR_HEIGHT)
 #define ROW2            (ROW1 + IND_HEIGHT)
 #define ROW3            (ROW2 + IND_HEIGHT)
+
+
+#define SB_HEIGHT       (IND_HEIGHT)
+#define SB_WIDTH        (DISP_WIDTH / 4)
+
 #define COL1            (0)
-#define COL2            (DISP_WIDTH / 2)
+#define COL2            (SB_WIDTH)
+#define COL3            (SB_WIDTH * 2)
+#define COL4            (SB_HEIGHT * 3)
 
-// This class implements a rectangle container which has a main display for
-// eg voltage, a smaller header. It is designed to work with the lvgl library
-// on an ESP32 or similar.
-// It has a fixed size.
-class Indicator {
-   public:
-    // Constructor:
-    Indicator(lv_obj_t *parent, const char *label, uint32_t x, uint32_t y);
-    void setValue(const char *value);
-
-    // Set the value of a meter using a double and set the precision
-    void setValue(double value, const char* units, uint32_t prec);
-    
-    //Change the main indicator font
-    void setFont(const lv_font_t *value);
-
-    // private:
-    lv_obj_t *container;
-    lv_obj_t *label;
-    lv_obj_t *text;
-
-    lv_style_t text_style;
-    lv_style_t value_style;
-    lv_style_t style;
-
-    // The interval used for moving averages
-    static const int interval = 4;  
-};
-
-// Class to implement a full width info text area. 
-class InfoBar {
-    public:
-    InfoBar(lv_obj_t * parent, uint32_t y);
-    void setValue(const char * value);
-    void setTime(const char * t);
-
-    bool isActive;
-
-    lv_obj_t * container;
-    lv_obj_t * text;
-    lv_obj_t * curTime;
-};
-
-
-class MenuBar {
-    public:
-    MenuBar(lv_obj_t * parent, uint32_t y);
-
-    void addButton(const char * label, Screens target);
-    lv_obj_t *  addActionButton(const char * label, void (*ptr)(lv_event_t *));
-    lv_obj_t * container;
-};
-
-typedef struct Buttons {
-    BTN btn;
-    Screens target;
-    const char * label;
-}Buttons;
 
 #define border 1
 #define padding 0

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <display.h>
+#include <Indicator.h>
 #include <drivers/display/tft_espi/lv_tft_espi.h>
 #include <lvgl.h>
 #include <myFonts.h>
@@ -9,6 +10,8 @@
 #include <StringStream.h>
 #include <SysInfo.h>
 #include <rotary_encoder.h>
+#include <GwPrefs.h>
+#include <n2ksender.h>
 
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
  * in bytes*/
@@ -19,6 +22,11 @@ TFT_eSPI * tft;
 
 static lv_obj_t *screen[SCR_MAX];
 static InfoBar *bars[SCR_MAX];
+static MenuBar *menus[SCR_MAX];
+static StateButton *ind[SCR_MAX][12];
+
+static Screens curscreen = SCR_MAIN;
+
 // define the text areas
 static lv_obj_t *textAreas[SCR_MAX];
 
@@ -94,7 +102,7 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_m
 
 void displayInit() {
     Serial.printf("Display Init\n");
-    Serial.printf("DRAWBUFSIZE %ld\n", DRAW_BUF_SIZE);
+    Serial.printf("DRAWBUFSIZE %d\n", DRAW_BUF_SIZE);
 
     Serial.printf("W %d H %d BARH %d BARW %d BODH %d\n", TFT_WIDTH,
                   TFT_HEIGHT, BAR_HEIGHT, BAR_WIDTH, BODY_HEIGHT);
@@ -164,6 +172,7 @@ void displayInit() {
     screen[SCR_SYSINFO] = createSysInfoScreen();
 
     lv_scr_load(screen[SCR_MAIN]);
+    curscreen = SCR_MAIN;
     handleDisplay();
     Serial.println("Setup done");
 }
@@ -196,12 +205,13 @@ static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
     bar->setValue(title);
 }
 
-static void setupMenu(lv_obj_t *screen) {
+static MenuBar * setupMenu(lv_obj_t *screen) {
     MenuBar *menuBar = new MenuBar(screen, BAR_ROW_BOTTOM);
     menuBar->addButton("Home", SCR_MAIN);
     menuBar->addButton("MSG", SCR_MSG);
     menuBar->addButton("CAN", SCR_CAN);
     menuBar->addButton("DATA", SCR_SYSINFO);
+    return menuBar;
 }
 
 lv_obj_t *createMain() {
@@ -214,7 +224,7 @@ lv_obj_t *createMain() {
     lv_style_init(&style);
 
     lv_style_set_bg_opa(&style, LV_OPA_100);
-    lv_style_set_bg_color(&style, lv_palette_main(LV_PALETTE_GREEN));
+    lv_style_set_bg_color(&style, lv_color_white());
     lv_style_set_pad_all(&style, 0);
     lv_obj_t *body = lv_obj_create(screen);
     lv_obj_set_pos(body, 0, BAR_HEIGHT);
@@ -222,7 +232,15 @@ lv_obj_t *createMain() {
     lv_obj_set_height(body, BODY_HEIGHT);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_style(body, &style, 0);
-    setupMenu(screen);
+
+    // the main buttons showing the state of the settings
+    ind[SCR_MAIN][0] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
+    ind[SCR_MAIN][1] = new StateButton(body, "YD", COL1, ROW2, YDENABLE);
+
+    ind[SCR_MAIN][0]->cb = ToggleSending;
+    ind[SCR_MAIN][1]->cb = ToggleYD;
+
+    menus[SCR_MAIN] = setupMenu(screen);
 
     return screen;
 }
@@ -239,25 +257,25 @@ lv_obj_t* createSysInfoScreen() {
     lv_obj_set_style_text_font(textAreas[SCR_SYSINFO], &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_update_flag(textAreas[SCR_SYSINFO], LV_OBJ_FLAG_SCROLLABLE, true);
-    setupMenu(screen);
+    menus[SCR_SYSINFO] = setupMenu(screen);
     return screen;
 }
 
 lv_obj_t* createMsgScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
-    setupHeader(SCR_SYSINFO, screen, "NMEA200 Config");
+    setupHeader(SCR_MSG, screen, "NMEA200 Config");
 
-    setupMenu(screen);
+    menus[SCR_MSG] = setupMenu(screen);
     return screen;
 }
 
 lv_obj_t* createCanScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
-    setupHeader(SCR_SYSINFO, screen, "NMEA2000 CAN");
+    setupHeader(SCR_CAN, screen, "NMEA2000 CAN");
 
-    setupMenu(screen);
+    menus[SCR_CAN] = setupMenu(screen);
     return screen;
 }
 
@@ -282,11 +300,12 @@ void buttonHandler(lv_event_t* e) {
     Screens s = reinterpret_cast<Screens&>(target);
 #pragma GCC diagnostic pop
     lv_event_code_t code = lv_event_get_code(e);
-    Serial.printf("Button handler scr %d code %d\n", target, code);
+    Serial.printf("Button handler scr %d code %d\n", s, code);
     if (code == LV_EVENT_PRESSED) {
         if (s >= 0 && s < SCR_MAX && screen[s]) {
             refreshSysinfo();
             lv_scr_load(screen[s]);
+            curscreen = s;
         }
     }
 }
