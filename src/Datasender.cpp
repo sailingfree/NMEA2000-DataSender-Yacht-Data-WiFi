@@ -153,7 +153,9 @@ void setup() {
     String hname = "n2ktester";
     host_name = hname + String(chipid[4], HEX) + String(chipid[5], HEX);
 
-    // Init the display
+    setupN2ksender();
+
+    // Init the display - this requires the n2k to have been initialised
     displayInit();
 
     // Start the wifi
@@ -187,8 +189,6 @@ void setup() {
     // Init the interactive shell using the serial connection
     initGwShell();
     setShellSource(&Serial);
-
-    setupN2ksender();
 
     rotary_setup();
 }

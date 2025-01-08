@@ -84,10 +84,16 @@ void GwListRegs(Stream& s) {
 
 String GwGetVal(const char* key, String defval) {
     // GwPrefsInit();
+    String val = "";
+
     shellPref.begin(prefname, false);
-    String val = shellPref.getString(key);
+
+    // Check the key exists first
+    if(shellPref.isKey(key)) {
+        val = shellPref.getString(key);
+    }
     shellPref.end();
-    // Serial.printf("GWGETVAL %s '%s'\n", key, val.c_str());
+
     if (val == "") {
         val = defval;
     }

@@ -13,6 +13,11 @@
 #include <GwPrefs.h>
 #include <n2ksender.h>
 
+void refreshMainScreen();
+void refreshMsgScreen();
+void refreshCanScreen();
+void refreshSysinfo();
+
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
  * in bytes*/
 #define DRAW_BUF_SIZE (TFT_WIDTH * TFT_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
@@ -24,17 +29,24 @@ static lv_obj_t *screen[SCR_MAX];
 static InfoBar *bars[SCR_MAX];
 static MenuBar *menus[SCR_MAX];
 static StateButton *ind[SCR_MAX][12];
-
-static Screens curscreen = SCR_MAIN;
+lv_obj_t * cb[MAXN2KMESSAGES];
+static Screens curscreen = SCR_INVALID;
 
 // define the text areas
 static lv_obj_t *textAreas[SCR_MAX];
+
+// Callbacks to refresh each screen
+// NULL means no callback
+static void(* refreshCb [SCR_MAX])() = {refreshMainScreen, refreshMsgScreen, refreshCanScreen, refreshSysinfo};
+
 
 // Forward decls
 lv_obj_t *createMain();
 lv_obj_t * createCanScreen();
 lv_obj_t * createMsgScreen();
 lv_obj_t* createSysInfoScreen();
+
+
 
 #if LV_USE_LOG != 0
 void my_print(lv_log_level_t level, const char *buf) {
@@ -71,7 +83,7 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
         data->state = LV_INDEV_STATE_REL;
     } else {
         data->state = LV_INDEV_STATE_PR;
-        Serial.printf("Touch: %d %d\n", touchX, touchY);
+//        Serial.printf("Touch: %d %d\n", touchX, touchY);
 
         /*Set the coordinates*/
         data->point.x = touchX;
@@ -178,12 +190,21 @@ void displayInit() {
 }
 
 void handleDisplay() {
+    static time_t last = 0;
+    time_t now = millis();
+
     RotaryEV rotev;
     static const uint32_t tick_delay = 10;
     lv_task_handler(); /* let the GUI do its work */
     rotev = rotary_loop();
     if(rotev) {
         Serial.printf("ROTARY EV %d\n", rotev);
+    }
+
+    // Refresh the currently displayed screen every 1000msecs
+    if(now > last + 1000 && curscreen >= 0 && refreshCb[curscreen]) {
+        refreshCb[curscreen]();
+        last = now;
     }
     lv_tick_inc(tick_delay);
 }
@@ -193,7 +214,7 @@ void handleDisplay() {
 static void setupCommonstyles(lv_obj_t *obj) {
     lv_obj_set_style_pad_gap(obj, padding, 0);
 
-    lv_obj_set_height(obj, BODY_HEIGHT);
+    lv_obj_set_height(obj, DISP_HEIGHT);
     lv_obj_set_width(obj, DISP_WIDTH);
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
@@ -226,6 +247,7 @@ lv_obj_t *createMain() {
     lv_style_set_bg_opa(&style, LV_OPA_100);
     lv_style_set_bg_color(&style, lv_color_white());
     lv_style_set_pad_all(&style, 0);
+
     lv_obj_t *body = lv_obj_create(screen);
     lv_obj_set_pos(body, 0, BAR_HEIGHT);
     lv_obj_set_width(body, DISP_WIDTH);
@@ -234,8 +256,8 @@ lv_obj_t *createMain() {
     lv_obj_add_style(body, &style, 0);
 
     // the main buttons showing the state of the settings
-    ind[SCR_MAIN][0] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
-    ind[SCR_MAIN][1] = new StateButton(body, "YD", COL1, ROW2, YDENABLE);
+    ind[SCR_MAIN][SBIDX_CAN] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
+    ind[SCR_MAIN][SBIDX_YD] = new StateButton(body, "YD", COL1, ROW2, YDENABLE);
 
     ind[SCR_MAIN][0]->cb = ToggleSending;
     ind[SCR_MAIN][1]->cb = ToggleYD;
@@ -243,6 +265,15 @@ lv_obj_t *createMain() {
     menus[SCR_MAIN] = setupMenu(screen);
 
     return screen;
+}
+
+void refreshMainScreen() {
+    if(ind[SCR_MAIN][SBIDX_CAN]) {
+        ind[SCR_MAIN][SBIDX_CAN]->update();
+    }
+    if(ind[SCR_MAIN][SBIDX_YD]) {
+        ind[SCR_MAIN][SBIDX_YD]->update();
+    }
 }
 
 lv_obj_t* createSysInfoScreen() {
@@ -261,14 +292,83 @@ lv_obj_t* createSysInfoScreen() {
     return screen;
 }
 
+// Callback for the message list checkboxes
+// The user data is the index into the N2kSendMessages array
+// a state change will update the map in nvram
+static void msg_event_handler(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * obj = lv_event_get_target_obj(e);
+    size_t idx = (size_t)lv_event_get_user_data(e);
+    if(code == LV_EVENT_VALUE_CHANGED) {
+        LV_UNUSED(obj);
+        const char * txt = lv_checkbox_get_text(obj);
+        const char * state = lv_obj_get_state(obj) & LV_STATE_CHECKED ? "Checked" : "Unchecked";
+        LV_UNUSED(txt);
+        LV_UNUSED(state);
+//        Serial.printf("Changed %s: %s", txt, state);
+        N2kSendMessages[idx].Enable(lv_obj_get_state(obj) & LV_STATE_CHECKED);
+        saveMap();
+    }
+}
+
+
+// Message screen.
+// Provaides a list of checkboxes for the PGNS to be sent.
 lv_obj_t* createMsgScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
     setupHeader(SCR_MSG, screen, "NMEA200 Config");
 
+    // Main body for the lists of messages
+    static lv_style_t style;
+    lv_style_init(&style);
+    lv_obj_t *body = lv_obj_create(screen);
+    lv_obj_set_pos(body, 0, BAR_HEIGHT);
+    lv_obj_set_width(body, DISP_WIDTH);
+    lv_obj_set_height(body, BODY_HEIGHT);
+    Serial.printf("bodyheight %d bodytop %d\n", BODY_HEIGHT, BAR_HEIGHT);
+    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+//    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+//    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_add_style(body, &style, 0);
+
+    lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+
+    // Get the list of supported N2K messages
+    size_t cnt = nN2kSendMessages;
+    for (size_t i = 0; i < cnt; i++) {
+        if (i < MAXN2KMESSAGES) {
+            // Dont overflow our static storage
+            // Yes yes I know should us dynamic storage
+            Serial.print("    ");
+            Serial.print(i);
+            Serial.print(" : ");
+            Serial.print(N2kSendMessages[i].Scheduler.IsEnabled()
+                             ? "(enabled)  "
+                             : "(disabled) ");
+            Serial.println(N2kSendMessages[i].Description);
+            cb[i] = lv_checkbox_create(body);
+            lv_obj_remove_flag(cb[i], LV_OBJ_FLAG_SCROLLABLE);
+            lv_checkbox_set_text(cb[i], N2kSendMessages[i].Description);
+            lv_obj_add_state(cb[i], N2kSendMessages[i].Scheduler.IsEnabled());
+            lv_obj_add_event_cb(cb[i], msg_event_handler, LV_EVENT_ALL, (void *)i);
+        }
+    }
+    lv_obj_scroll_to(body, 0, 0, LV_ANIM_OFF);
+    lv_obj_update_layout(body);
     menus[SCR_MSG] = setupMenu(screen);
     return screen;
 }
+
+// Update the checkboxes in case the state has been changed by the CLI or API (future)
+void refreshMsgScreen() {
+    size_t cnt = nN2kSendMessages;
+    for (size_t i = 0; i < cnt; i++) {
+        lv_obj_set_state(cb[i], LV_STATE_CHECKED, N2kSendMessages[i].Scheduler.IsEnabled());
+    }
+}
+
 
 lv_obj_t* createCanScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
@@ -277,6 +377,10 @@ lv_obj_t* createCanScreen() {
 
     menus[SCR_CAN] = setupMenu(screen);
     return screen;
+}
+
+void refreshCanScreen() {
+
 }
 
 void displayText(const char * txt) {
@@ -300,7 +404,7 @@ void buttonHandler(lv_event_t* e) {
     Screens s = reinterpret_cast<Screens&>(target);
 #pragma GCC diagnostic pop
     lv_event_code_t code = lv_event_get_code(e);
-    Serial.printf("Button handler scr %d code %d\n", s, code);
+//    Serial.printf("Button handler scr %d code %d\n", s, code);
     if (code == LV_EVENT_PRESSED) {
         if (s >= 0 && s < SCR_MAX && screen[s]) {
             refreshSysinfo();

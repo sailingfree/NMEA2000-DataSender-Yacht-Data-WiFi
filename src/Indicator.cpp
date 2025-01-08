@@ -206,7 +206,6 @@ lv_obj_t* MenuBar::addActionButton(const char* label, void (*ptr)(lv_event_t* e)
 // Event callback for the StateButton
 static void callback(lv_event_t * e) {
     StateButton * b = (StateButton * )lv_event_get_user_data(e);
-    Serial.printf("StateButton callback for %s\n", b->prefname);
     if(b->cb) {
         b->cb(0, NULL);
     }
@@ -245,13 +244,10 @@ StateButton::StateButton(lv_obj_t * parent, const char * label, uint32_t x, uint
 
 void StateButton::update() {
     val = GwGetInt(prefname);
-    Serial.printf("pref %s -> %d\n", prefname, val);
     if(val) {
         lv_obj_set_style_bg_color(container, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
-        Serial.printf("GREEN\n");
     } else {
         lv_obj_set_style_bg_color(container, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN);
-        Serial.printf("RED\n");
     }
 }
 

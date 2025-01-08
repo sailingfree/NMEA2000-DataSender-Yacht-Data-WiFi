@@ -25,22 +25,9 @@ void CheckLoopTime();
 using tN2kSendFunction = void (*)();
 void addCommands();
 
-// Structure for holding message sending information
-struct tN2kSendMessage {
-    tN2kSendFunction SendFunction;
-    const char *const Description;
-    tN2kSyncScheduler Scheduler;
 
-    tN2kSendMessage(tN2kSendFunction _SendFunction, const char *const _Description, uint32_t /* _NextTime */
-                    ,
-                    uint32_t _Period, uint32_t _Offset, bool _Enabled) : SendFunction(_SendFunction),
-                                                                         Description(_Description),
-                                                                         Scheduler(_Enabled, _Period, _Offset) {}
-    void Enable(bool state);
-};
 
-extern tN2kSendMessage N2kSendMessages[];
-extern size_t nN2kSendMessages;
+
 
 static unsigned long N2kMsgSentCount = 0;
 static unsigned long N2kMsgFailCount = 0;
@@ -79,7 +66,7 @@ void mapToMsg() {
     }
 }
 
-// read the map from the preferences and upadte the messages
+// read the map from the preferences and update the messages
 void readMap() {
     enableMap = GwGetInt(N2KMAP);
     mapToMsg();
@@ -864,6 +851,7 @@ int EnableAllMessages(int argc, char ** argv) {
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         N2kSendMessages[i].Enable(true);
     }
+    saveMap();
     Serial.println("All messages enabled");
     return 0;
 }
@@ -874,6 +862,7 @@ int DisableAllMessages(int argc, char ** argv) {
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         N2kSendMessages[i].Enable(false);
     }
+    saveMap();
     Serial.println("All messages disabled");
     return 0;
 }

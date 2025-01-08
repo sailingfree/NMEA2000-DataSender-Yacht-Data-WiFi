@@ -4,7 +4,8 @@
 #include <lvgl.h>
 
 typedef enum {
-    SCR_MAIN,           // Main window with controls and summary
+    SCR_INVALID = -1,   // Invaluid screen
+    SCR_MAIN = 0,       // Main window with controls and summary
     SCR_MSG,            // message controls
     SCR_CAN,            // Can related info
     SCR_SYSINFO,        // system and network info
@@ -19,6 +20,12 @@ typedef enum {
     BTN_MAX
 }BTN;
 
+// StateButton indexes
+typedef enum {
+    SBIDX_CAN = 0,
+    SBIDX_YD
+}
+StateButtonIndex;
 // define the diemsnions of the actual tft display
 #undef TFT_WIDTH
 #undef TFT_HEIGHT
