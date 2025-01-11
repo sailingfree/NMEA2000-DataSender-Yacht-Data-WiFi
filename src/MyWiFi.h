@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once 
 
 #include <WiFi.h>
+#include <map>
 
 // Wifi mode
 typedef enum { WiFi_off, WiFi_AP, WiFi_Client } Gw_WiFi_Mode;
@@ -37,6 +38,7 @@ typedef struct {
 extern Stream *Console;
 
 // External declarations
+extern std::map<int, int> N2kMsgMap;
 
 // Initialise the wifi network
 void wifiSetup(String &hostName);

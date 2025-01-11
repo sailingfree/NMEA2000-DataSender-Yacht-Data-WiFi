@@ -69,3 +69,4 @@ void displayInit();
 void handleDisplay();
 void displayText(const char * txt);
 void buttonHandler(lv_event_t* e);
+void updateTextArea(Screens scr, String & val);

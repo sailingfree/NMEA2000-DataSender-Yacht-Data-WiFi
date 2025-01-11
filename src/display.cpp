@@ -12,6 +12,7 @@
 #include <rotary_encoder.h>
 #include <GwPrefs.h>
 #include <n2ksender.h>
+#include <n2kdatadecode.h>
 
 void refreshMainScreen();
 void refreshMsgScreen();
@@ -25,15 +26,22 @@ void refreshSysinfo();
 // The display object
 TFT_eSPI * tft;
 
+extern std::map<int, int> N2kMsgMap;
+extern std::map<long, const char *> pgnToStr;
+
 static lv_obj_t *screen[SCR_MAX];
 static InfoBar *bars[SCR_MAX];
 static MenuBar *menus[SCR_MAX];
 static StateButton *ind[SCR_MAX][12];
-lv_obj_t * cb[MAXN2KMESSAGES];
-static Screens curscreen = SCR_INVALID;
 
 // define the text areas
 static lv_obj_t *textAreas[SCR_MAX];
+
+// Secondary areas for some screens
+static lv_obj_t *secondArea[SCR_MAX];
+
+lv_obj_t * cb[MAXN2KMESSAGES];
+static Screens curscreen = SCR_INVALID;
 
 // Callbacks to refresh each screen
 // NULL means no callback
@@ -372,15 +380,109 @@ void refreshMsgScreen() {
 
 lv_obj_t* createCanScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
+    lv_obj_t * textArea;
     setupCommonstyles(screen);
     setupHeader(SCR_CAN, screen, "NMEA2000 CAN");
 
+    // Create a text area to display the info text
+    // This takes up the right hand portion of the screen
+    textArea = textAreas[SCR_CAN] = lv_textarea_create(screen);
+    lv_obj_set_size(textArea, DISP_WIDTH / 2, BODY_HEIGHT);
+    lv_obj_set_pos(textArea, DISP_WIDTH / 2, BAR_HEIGHT);
+ //   lv_obj_align(textArea, LV_ALIGN_CENTER, DISP_WIDTH / 2, 0);
+    lv_obj_set_style_text_font(textArea, &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // The list of received messages and the selector to view them on the left
+    lv_obj_t * body = secondArea[SCR_CAN] = lv_obj_create(screen);
+    lv_obj_set_size(body, DISP_WIDTH / 2, BODY_HEIGHT);
+    lv_obj_set_pos(body, 0, BAR_HEIGHT);
+    lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(body, padding, 0);
+    lv_obj_set_style_margin_all(body, 0, 0);
+
+    refreshCanScreen();
+ 
+    lv_obj_update_flag(textArea, LV_OBJ_FLAG_SCROLLABLE, true);
     menus[SCR_CAN] = setupMenu(screen);
     return screen;
 }
 
-void refreshCanScreen() {
+extern std::map<int, tN2kMsg> N2kLastMessage;
+void canButtonHandler(lv_event_t *e) {
+    std::map<int, tN2kMsg>::iterator iter;
+    long int pgn = (long int)lv_event_get_user_data(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        Serial.printf("PGN %ld\n", pgn);
+        iter = N2kLastMessage.find(pgn);
+        if (iter == N2kLastMessage.end()) {
+            Serial.printf("No messages with PGN %ld found\n", pgn);
+        } else {
+            StringStream output;
+            Serial.printf("Message with PGN %ld found\n", pgn);
+            HandleNMEA2000Msg(iter->second, &output);
+            updateTextArea(SCR_CAN, output.data);
+            Serial.printf("%s\n", output.data.c_str());
+        }
+    }
+}
 
+// Update the list of messages seen
+// Only do an update if the number of messages has changed since last time
+// The messages are shown with the PGN and if clicked will show the decode
+// of the last saved message in the right hand side of the screen
+void refreshCanScreen() {
+    static size_t lastCount = 0;
+    size_t thisCount = N2kMsgMap.size();
+    Screens scr = SCR_CAN;
+    lv_obj_t *area = secondArea[scr];
+
+    // Clear the existing list if list changed
+    if (area && thisCount > lastCount) {
+        lv_obj_clean(area);        
+        std::map<int, int>::iterator it = N2kMsgMap.begin();
+        std::map<long, const char *>::iterator it2;
+        
+        while (it != N2kMsgMap.end()) {
+            it2 = pgnToStr.begin();
+            lv_obj_t *pgnBox = lv_obj_create(area);
+            lv_obj_t *button = lv_button_create(pgnBox);
+            lv_obj_t *label = lv_label_create(button);
+            lv_obj_t *name = lv_label_create(pgnBox);
+            const char * nameStr = "";
+            long pgn = it->first;
+
+            lv_obj_set_flex_flow(pgnBox, LV_FLEX_FLOW_ROW);
+            lv_obj_clear_flag(pgnBox, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_pad_all(pgnBox, padding, 0);
+            lv_obj_set_style_margin_all(pgnBox, 0, 0);
+            lv_obj_set_width(pgnBox, lv_obj_get_width(area));
+            lv_obj_set_height(pgnBox, BAR_HEIGHT);
+//            lv_obj_set_height(button, BAR_HEIGHT);
+
+
+
+            // hand rolled find() equivalent
+            bool found = false;
+            while (!found && it2 != pgnToStr.end()) {
+                if(it2->first == pgn) {
+                    nameStr = it2->second;
+                    found = true;
+                }
+                it2++;
+            }
+
+            Serial.printf("Adding pgn %ld %s\n", pgn, nameStr);
+            lv_label_set_text(label, String(pgn).c_str());
+            lv_label_set_text(name, nameStr);
+            lv_obj_center(label);
+            lv_obj_add_event_cb(button, canButtonHandler, LV_EVENT_ALL, (void *)pgn);
+            lv_obj_update_layout(area);
+            it++;
+        }
+    }
+
+    lastCount = thisCount;
 }
 
 void displayText(const char * txt) {
@@ -411,5 +513,12 @@ void buttonHandler(lv_event_t* e) {
             lv_scr_load(screen[s]);
             curscreen = s;
         }
+    }
+}
+
+void updateTextArea(Screens scr, String & val) {
+    if(scr >= SCR_MAIN && scr < SCR_MAX) {
+        lv_textarea_set_text(textAreas[scr], val.c_str());
+        lv_obj_scroll_to(textAreas[scr], 0, 0, LV_ANIM_OFF);
     }
 }

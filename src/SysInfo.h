@@ -34,3 +34,4 @@ void getNetInfo(Stream& s);
 void getSysInfo(Stream& s);
 int getCpuAvg(int core);
 void getN2kMsgs(Stream& s);
+void printPGN(unsigned long);

@@ -64,6 +64,9 @@
 // Rotary encoder
 #include <rotary_encoder.h>
 
+// N2k message decoder
+#include <n2kdatadecode.h>
+
 // Forward declarations for functions
 void CheckCommand();
 
@@ -154,6 +157,8 @@ void setup() {
     host_name = hname + String(chipid[4], HEX) + String(chipid[5], HEX);
 
     setupN2ksender();
+
+    setupDecoder(Console);
 
     // Init the display - this requires the n2k to have been initialised
     displayInit();

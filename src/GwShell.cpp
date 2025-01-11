@@ -155,6 +155,17 @@ int reboot(int argc, char** argv) {
     return 0;  // I dont think we ever get here
 }
 
+// Decode a PGN and print the result
+// The 1st arg is the PGN number
+int decodePGN(int argc, char ** argv) {
+    unsigned long PGN;
+    if(argc < 2) {
+        Serial.printf("Missing PGN number\n");
+    }
+    PGN = atol(argv[1]);
+    printPGN(PGN);
+    return 0;
+}
 // Initialise the shell and add the commands
 void initGwShell() {
     Serial.println("Initialisting the shell");
@@ -168,6 +179,7 @@ void initGwShell() {
     shell.addCommand(F("logger \tForward all messages to the console"), logger);
     shell.addCommand(F("reboot \tRestart the board"), reboot);
     shell.addCommand(F("msgs \t\tPrint the messages we have received"), messages);
+    shell.addCommand(F("dec \t\tDecode message with PGN"), decodePGN);
 }
 
 // Print a prompt to the terminal

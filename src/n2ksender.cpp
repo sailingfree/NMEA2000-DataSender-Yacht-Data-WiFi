@@ -715,11 +715,11 @@ void CheckLoopTime() {
 
     if (NextCheck < millis()) {
         NextCheck = millis() + LoopTimePeriod;
-        Serial.print("- Loop times max:");
-        Serial.print(MaxLoopTime);
-        Serial.print(" us, avg:");
-        Serial.print(AvgSum / AvgCount);
-        Serial.println(" us");
+//        Serial.print("- Loop times max:");
+//        Serial.print(MaxLoopTime);
+//        Serial.print(" us, avg:");
+//        Serial.print(AvgSum / AvgCount);
+//        Serial.println(" us");
         MaxLoopTime = 0;
         AvgSum = 0;
         AvgCount = 0;

@@ -28,13 +28,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <StringStream.h>
 #include <YDtoN2KUDP.h>
 #include <display.h>
+#include <n2kdatadecode.h>
 
 #include <map>
 
 #include <SysInfo.h>
 
-// Map for received n2k messages. Logs the PGN and the count
+// Map for received n2k message counts. Logs the PGN and the count
 std::map<int, int> N2kMsgMap;
+
+// Map for the latest message of a given type
+std::map<int, tN2kMsg> N2kLastMessage;
 
 // Storage for some wifi credentials.
 static const uint16_t MaxAP = 2;
@@ -203,9 +207,17 @@ void wifiSetup(String &hostName) {
     }
 }
 
+// Read the YD data, decode the N2K messages
+// and save the last message of each PGN
 void wifiWork(void) {
+    tN2kMsg msg;
+
+    if (WiFi.status() == WL_CONNECTED) {
+        while (ydtoN2kUDP.readYD(msg)) {
+            N2kMsgMap[msg.PGN]++;
+            N2kLastMessage[msg.PGN] = msg;
+        }
+    }
 }
 
-bool wifiConnected() {
-    return WiFi.isConnected();
-}
+bool wifiConnected() { return WiFi.isConnected(); }
