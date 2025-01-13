@@ -1,3 +1,8 @@
+// Main display section.
+// Init the display touch and rotary encoder
+// Draw the screens 
+// Handle the callbacks
+
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <display.h>
@@ -32,9 +37,17 @@ void loadScreen(Screens s);
 // The display object
 TFT_eSPI * tft;
 
+// Map for received messages
 extern std::map<int, int> N2kMsgMap;
+
+// Map to convert between enum and strings for the n2k PGNs we are interested in
 extern std::map<long, const char *> pgnToStr;
 
+// Map of the last message for each PNG received
+extern std::map<int, tN2kMsg> N2kLastMessage;
+
+// Here we save pointers to the created screens and their children.
+// Could be better done with classes!
 static lv_obj_t *screen[SCR_MAX];
 static InfoBar *bars[SCR_MAX];
 static MenuBar *menus[SCR_MAX];
@@ -51,18 +64,20 @@ static Screens curscreen = SCR_INVALID;
 
 // Callbacks to refresh each screen
 // NULL means no callback
+// Called periodically from the main loop
 static void(* refreshCb [SCR_MAX])() = {refreshMainScreen, refreshMsgScreen, refreshCanScreen, refreshSysinfo};
 
 // Groups for navigation
 static lv_group_t *group[SCR_MAX];
 
+// The object on each screen to focus on when the screen is loaded
 static lv_obj_t * firstFocus[SCR_MAX];
 
 // Indev for the rotary encoder
 lv_indev_t * rotaryIndev;
 
 
-
+// Callback used by the lv printf function. see lv_conf.h
 #if LV_USE_LOG != 0
 void my_print(lv_log_level_t level, const char *buf) {
     LV_UNUSED(level);
@@ -71,23 +86,13 @@ void my_print(lv_log_level_t level, const char *buf) {
 }
 #endif
 
-/* LVGL calls it when a rendered image needs to copied to the display*/
+/* LVGL calls this when a rendered image needs to copied to the display*/
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
-    /*Copy `px map` to the `area`*/
-
-    /*For example ("my_..." functions needs to be implemented by you)
-    uint32_t w = lv_area_get_width(area);
-    uint32_t h = lv_area_get_height(area);
-
-    my_set_window(area->x1, area->y1, w, h);
-    my_draw_bitmaps(px_map, w * h);
-     */
-
-    /*Call it to tell LVGL you are ready*/
     lv_display_flush_ready(disp);
 }
 
-/*Read the touchpad*/
+/*Read the touchpad and update the indev data indicating if the touch pad was touched
+and if so the coordinates */
 void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     uint16_t touchX = 0, touchY = 0;
 
@@ -105,7 +110,6 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
 }
 
 // Read the rotary encoder callback
-// returns tru of there was an event
 void my_rotary_read(lv_indev_t *indev, lv_indev_data_t *data) {
     RotaryEV ev = rotary_loop();
     data->enc_diff = 0;
@@ -149,6 +153,7 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_m
     lv_display_flush_ready(disp);
 }
 
+// Initialise lvgl and assign the tft_espi device as the display driver
 void displayInit() {
     Serial.printf("Display Init\n");
     Serial.printf("DRAWBUFSIZE %d\n", DRAW_BUF_SIZE);
@@ -171,17 +176,8 @@ void displayInit() {
     lv_tick_set_cb(my_tick);
 
     /* register print function for debugging */
-#if LV_USE_LOG != 0
-    lv_log_register_print_cb(my_print);
-#endif
     lv_display_t * disp;
 
-#if LV_USE_TFT_ESPI
-    /*TFT_eSPI can be enabled lv_conf.h to initialize the display in a simple way*/
-    disp = lv_tft_espi_create(DISP_WIDTH, DISP_HEIGHT, draw_buf, sizeof(draw_buf));
-    lv_display_set_rotation(disp, TFT_ROTATION);
-
-#else
     disp = lv_display_create(DISP_WIDTH, DISP_HEIGHT);
     tft = new TFT_eSPI(TFT_WIDTH, TFT_HEIGHT);
     tft->begin();          /* TFT init */
@@ -202,13 +198,8 @@ void displayInit() {
         tft->setTouch(calData);
     }
 
- 
-#endif
-
-
     lv_display_set_flush_cb(disp, flush_cb);
     lv_display_set_buffers(disp, (void *)draw_buf, NULL, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);  
-//    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
     /*Initialize the (dummy) input device driver for the touchscreen*/
     lv_indev_t * indev;
@@ -221,17 +212,19 @@ void displayInit() {
     lv_indev_set_type(rotaryIndev, LV_INDEV_TYPE_ENCODER);
     lv_indev_set_read_cb(rotaryIndev, my_rotary_read);
 
+    // Create the screens
     screen[SCR_MAIN] = createMain();
     screen[SCR_MSG]  = createMsgScreen();
     screen[SCR_CAN] = createCanScreen();
     screen[SCR_SYSINFO] = createSysInfoScreen();
 
+    // Start with the first screen
     loadScreen(SCR_MAIN);
     handleDisplay();
     Serial.println("Setup done");
 }
 
-// called regularly to update the screen
+// called regularly to update the screen from the main loop
 void handleDisplay() {
     static const uint32_t tick_delay = 10;
     static time_t last = 0;
@@ -248,7 +241,7 @@ void handleDisplay() {
 }
 
 
-
+// setup some common styles for the displays
 static void setupCommonstyles(lv_obj_t *obj) {
     lv_obj_set_style_pad_gap(obj, padding, 0);
 
@@ -262,7 +255,7 @@ void focus_cb(lv_group_t * g) {
     Serial.printf("Group focus callback\n");
 }
 
-
+// Draw a header for the screen. has a title and a clock
 static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
     // Info bar at the top
     InfoBar *bar = new InfoBar(screen, BAR_ROW_TOP);
@@ -270,6 +263,7 @@ static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
     bar->setValue(title);
 }
 
+// Draw the common menubar for the screens
 static MenuBar * setupMenu(lv_obj_t *screen, Screens scr) {
     MenuBar *menuBar = new MenuBar(screen, BAR_ROW_BOTTOM);
     menuBar->addButton("Home", SCR_MAIN);
@@ -289,6 +283,7 @@ static MenuBar * setupMenu(lv_obj_t *screen, Screens scr) {
     return menuBar;
 }
 
+// The main screen.
 lv_obj_t *createMain() {
     lv_obj_t *screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
@@ -356,7 +351,7 @@ lv_obj_t* createSysInfoScreen() {
     return screen;
 }
 
-// Callback for the message list checkboxes
+// Callback for the message list checkboxes when a checkbox is selected
 // The user data is the index into the N2kSendMessages array
 // a state change will update the map in nvram
 static void msg_event_handler(lv_event_t * e)
@@ -370,7 +365,6 @@ static void msg_event_handler(lv_event_t * e)
         const char * state = lv_obj_get_state(obj) & LV_STATE_CHECKED ? "Checked" : "Unchecked";
         LV_UNUSED(txt);
         LV_UNUSED(state);
-//        Serial.printf("Changed %s: %s", txt, state);
         N2kSendMessages[idx].Enable(lv_obj_get_state(obj) & LV_STATE_CHECKED);
         saveMap();
     }
@@ -378,7 +372,7 @@ static void msg_event_handler(lv_event_t * e)
 
 
 // Message screen.
-// Provaides a list of checkboxes for the PGNS to be sent.
+// Provides a list of checkboxes for the PGNS to be sent.
 lv_obj_t* createMsgScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
@@ -447,7 +441,6 @@ lv_obj_t* createCanScreen() {
     textArea = textAreas[SCR_CAN] = lv_textarea_create(screen);
     lv_obj_set_size(textArea, DISP_WIDTH / 2, BODY_HEIGHT);
     lv_obj_set_pos(textArea, DISP_WIDTH / 2, BAR_HEIGHT);
- //   lv_obj_align(textArea, LV_ALIGN_CENTER, DISP_WIDTH / 2, 0);
     lv_obj_set_style_text_font(textArea, &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     // The list of received messages and the selector to view them on the left
@@ -465,7 +458,8 @@ lv_obj_t* createCanScreen() {
     return screen;
 }
 
-extern std::map<int, tN2kMsg> N2kLastMessage;
+// Callback when one of the can messages has been slected.
+// This decodes the last message and displays it on th eright side of the CAN screen
 void canButtonHandler(lv_event_t *e) {
     std::map<int, tN2kMsg>::iterator iter;
     long int pgn = (long int)lv_event_get_user_data(e);
@@ -544,6 +538,8 @@ void refreshCanScreen() {
     lastCount = thisCount;
 }
 
+// Dummy. This could be used to put boot messages on the first screen.
+// as per my other projects
 void displayText(const char * txt) {
     Serial.printf("Displaying '%s'\n", txt);
 }
@@ -573,6 +569,8 @@ void loadScreen(Screens s) {
     }
 }
 
+// Menu button handler.
+// selects the required screen
 void buttonHandler(lv_event_t* e) {
     void* target = lv_event_get_user_data(e);
 
@@ -581,7 +579,6 @@ void buttonHandler(lv_event_t* e) {
     Screens s = reinterpret_cast<Screens&>(target);
 #pragma GCC diagnostic pop
     lv_event_code_t code = lv_event_get_code(e);
-//    Serial.printf("Button handler scr %d code %d\n", s, code);
     if (code == LV_EVENT_PRESSED) {
         if (s >= 0 && s < SCR_MAX && screen[s]) {
             loadScreen(s);
@@ -589,6 +586,7 @@ void buttonHandler(lv_event_t* e) {
     }
 }
 
+// Draw the supplied text into teh requied screen text area
 void updateTextArea(Screens scr, String & val) {
     if(scr >= SCR_MAIN && scr < SCR_MAX) {
         lv_textarea_set_text(textAreas[scr], val.c_str());
