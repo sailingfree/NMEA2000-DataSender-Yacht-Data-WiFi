@@ -1,5 +1,6 @@
 #include <lvgl.h>
 #include <display.h>
+#include <vector>
 
 // This class implements a rectangle container which has a main display for
 // eg voltage, a smaller header. It is designed to work with the lvgl library
@@ -37,9 +38,10 @@ class StateButton {
     public:
         int val;
         const char * prefname;
-        int (*cb)(int, char **);
+        int (*callBack)(int, char **);
         StateButton(lv_obj_t * parent, const char * label, uint32_t x, uint32_t y, const char * pref);
         void update();
+        lv_obj_t * getContainer() {return container;}
 
         private:
            // private:
@@ -69,9 +71,11 @@ class MenuBar {
     public:
     MenuBar(lv_obj_t * parent, uint32_t y);
 
-    void addButton(const char * label, Screens target);
-    lv_obj_t *  addActionButton(const char * label, void (*ptr)(lv_event_t *));
+    lv_obj_t * addButton(const char * label, Screens target);
+    lv_obj_t * addActionButton(const char * label, void (*ptr)(lv_event_t *));
     lv_obj_t * container;
+
+    std::vector<lv_obj_t *>buttons;
 };
 
 typedef struct Buttons {

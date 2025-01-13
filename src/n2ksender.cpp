@@ -176,7 +176,7 @@ void SendN2kMsg(const tN2kMsg &N2kMsg) {
     }
 
     if (enableCAN) {
-        Serial.printf("Going to send PGN %ld\n", N2kMsg.PGN);
+//        Serial.printf("Going to send PGN %ld\n", N2kMsg.PGN);
         if (NMEA2000.SendMsg(N2kMsg)) {
             N2kMsgSentCount++;
         } else {

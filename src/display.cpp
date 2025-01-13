@@ -14,10 +14,16 @@
 #include <n2ksender.h>
 #include <n2kdatadecode.h>
 
+// Forward decls
+lv_obj_t *createMain();
+lv_obj_t *createCanScreen();
+lv_obj_t *createMsgScreen();
+lv_obj_t *createSysInfoScreen();
 void refreshMainScreen();
 void refreshMsgScreen();
 void refreshCanScreen();
 void refreshSysinfo();
+void loadScreen(Screens s);
 
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
  * in bytes*/
@@ -47,12 +53,13 @@ static Screens curscreen = SCR_INVALID;
 // NULL means no callback
 static void(* refreshCb [SCR_MAX])() = {refreshMainScreen, refreshMsgScreen, refreshCanScreen, refreshSysinfo};
 
+// Groups for navigation
+static lv_group_t *group[SCR_MAX];
 
-// Forward decls
-lv_obj_t *createMain();
-lv_obj_t * createCanScreen();
-lv_obj_t * createMsgScreen();
-lv_obj_t* createSysInfoScreen();
+static lv_obj_t * firstFocus[SCR_MAX];
+
+// Indev for the rotary encoder
+lv_indev_t * rotaryIndev;
 
 
 
@@ -91,11 +98,33 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
         data->state = LV_INDEV_STATE_REL;
     } else {
         data->state = LV_INDEV_STATE_PR;
-//        Serial.printf("Touch: %d %d\n", touchX, touchY);
-
         /*Set the coordinates*/
         data->point.x = touchX;
         data->point.y = touchY;
+    }
+}
+
+// Read the rotary encoder callback
+// returns tru of there was an event
+void my_rotary_read(lv_indev_t *indev, lv_indev_data_t *data) {
+    RotaryEV ev = rotary_loop();
+    data->enc_diff = 0;
+    if (ev != ROT_NONE) {
+        switch (ev) {
+        case ROT_UP:
+            data->enc_diff = 1;
+            break;
+        case ROT_DOWN:
+            data->enc_diff = -1;
+            break;
+        case ROT_CLICK:
+            data->state = LV_INDEV_STATE_PRESSED;
+            break;
+        default:
+            break;
+        }
+        data->continue_reading = false;
+        Serial.printf("Rotary callback %d\n", ev);
     }
 }
 
@@ -181,33 +210,34 @@ void displayInit() {
     lv_display_set_buffers(disp, (void *)draw_buf, NULL, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);  
 //    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
-    /*Initialize the (dummy) input device driver*/
-    lv_indev_t * indev = lv_indev_create();
+    /*Initialize the (dummy) input device driver for the touchscreen*/
+    lv_indev_t * indev;
+    indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER); /*Touchpad should have POINTER type*/
     lv_indev_set_read_cb(indev, my_touchpad_read);
  
+    // Register the rotary controller driver
+    rotaryIndev = lv_indev_create();
+    lv_indev_set_type(rotaryIndev, LV_INDEV_TYPE_ENCODER);
+    lv_indev_set_read_cb(rotaryIndev, my_rotary_read);
+
     screen[SCR_MAIN] = createMain();
     screen[SCR_MSG]  = createMsgScreen();
     screen[SCR_CAN] = createCanScreen();
     screen[SCR_SYSINFO] = createSysInfoScreen();
 
-    lv_scr_load(screen[SCR_MAIN]);
-    curscreen = SCR_MAIN;
+    loadScreen(SCR_MAIN);
     handleDisplay();
     Serial.println("Setup done");
 }
 
+// called regularly to update the screen
 void handleDisplay() {
+    static const uint32_t tick_delay = 10;
     static time_t last = 0;
     time_t now = millis();
 
-    RotaryEV rotev;
-    static const uint32_t tick_delay = 10;
     lv_task_handler(); /* let the GUI do its work */
-    rotev = rotary_loop();
-    if(rotev) {
-        Serial.printf("ROTARY EV %d\n", rotev);
-    }
 
     // Refresh the currently displayed screen every 1000msecs
     if(now > last + 1000 && curscreen >= 0 && refreshCb[curscreen]) {
@@ -227,19 +257,35 @@ static void setupCommonstyles(lv_obj_t *obj) {
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+// Group focus callback
+void focus_cb(lv_group_t * g) {
+    Serial.printf("Group focus callback\n");
+}
+
+
 static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
-    // Info bar at the tope
+    // Info bar at the top
     InfoBar *bar = new InfoBar(screen, BAR_ROW_TOP);
     bars[scr] = bar;
     bar->setValue(title);
 }
 
-static MenuBar * setupMenu(lv_obj_t *screen) {
+static MenuBar * setupMenu(lv_obj_t *screen, Screens scr) {
     MenuBar *menuBar = new MenuBar(screen, BAR_ROW_BOTTOM);
     menuBar->addButton("Home", SCR_MAIN);
-    menuBar->addButton("MSG", SCR_MSG);
-    menuBar->addButton("CAN", SCR_CAN);
-    menuBar->addButton("DATA", SCR_SYSINFO);
+    menuBar->addButton("Msg", SCR_MSG);
+    menuBar->addButton("Can", SCR_CAN);
+    menuBar->addButton("Info", SCR_SYSINFO);
+    menuBar->addButton("Sys", SCR_SYSINFO);
+
+    int nb = menuBar->buttons.size();
+    // Save the first object to focus on when screen shown
+    firstFocus[scr] = menuBar->buttons[0];
+    for(int i = 0; i < nb; i++) {
+        lv_group_add_obj(group[scr], menuBar->buttons[i]);
+        Serial.printf("Adding button to the group\n");
+    }
+
     return menuBar;
 }
 
@@ -247,6 +293,9 @@ lv_obj_t *createMain() {
     lv_obj_t *screen = lv_obj_create(NULL);
     setupCommonstyles(screen);
     setupHeader(SCR_MAIN, screen, "NMEA2000 Tester");
+
+    group[SCR_MAIN] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_MAIN], focus_cb);
 
     // Main body for the chart and sky viwe
     static lv_style_t style;
@@ -267,10 +316,14 @@ lv_obj_t *createMain() {
     ind[SCR_MAIN][SBIDX_CAN] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
     ind[SCR_MAIN][SBIDX_YD] = new StateButton(body, "YD", COL1, ROW2, YDENABLE);
 
-    ind[SCR_MAIN][0]->cb = ToggleSending;
-    ind[SCR_MAIN][1]->cb = ToggleYD;
+    ind[SCR_MAIN][0]->callBack = ToggleSending;
+    ind[SCR_MAIN][1]->callBack = ToggleYD;
 
-    menus[SCR_MAIN] = setupMenu(screen);
+    // add the buttons to the group for rotary select
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][0]->getContainer());
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][1]->getContainer());
+
+    menus[SCR_MAIN] = setupMenu(screen, SCR_MAIN);
 
     return screen;
 }
@@ -289,6 +342,9 @@ lv_obj_t* createSysInfoScreen() {
     setupCommonstyles(screen);
     setupHeader(SCR_SYSINFO, screen, "System Info");
 
+    group[SCR_SYSINFO] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_SYSINFO], focus_cb);
+
     // Create a text area to display the info text
     textAreas[SCR_SYSINFO] = lv_textarea_create(screen);
     lv_obj_set_size(textAreas[SCR_SYSINFO], DISP_WIDTH, BODY_HEIGHT);
@@ -296,7 +352,7 @@ lv_obj_t* createSysInfoScreen() {
     lv_obj_set_style_text_font(textAreas[SCR_SYSINFO], &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_update_flag(textAreas[SCR_SYSINFO], LV_OBJ_FLAG_SCROLLABLE, true);
-    menus[SCR_SYSINFO] = setupMenu(screen);
+    menus[SCR_SYSINFO] = setupMenu(screen, SCR_SYSINFO);
     return screen;
 }
 
@@ -328,6 +384,9 @@ lv_obj_t* createMsgScreen() {
     setupCommonstyles(screen);
     setupHeader(SCR_MSG, screen, "NMEA200 Config");
 
+    group[SCR_MSG] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_MSG], focus_cb);
+
     // Main body for the lists of messages
     static lv_style_t style;
     lv_style_init(&style);
@@ -335,10 +394,7 @@ lv_obj_t* createMsgScreen() {
     lv_obj_set_pos(body, 0, BAR_HEIGHT);
     lv_obj_set_width(body, DISP_WIDTH);
     lv_obj_set_height(body, BODY_HEIGHT);
-    Serial.printf("bodyheight %d bodytop %d\n", BODY_HEIGHT, BAR_HEIGHT);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-//    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_MOMENTUM);
-//    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_add_style(body, &style, 0);
 
     lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
@@ -348,24 +404,22 @@ lv_obj_t* createMsgScreen() {
     for (size_t i = 0; i < cnt; i++) {
         if (i < MAXN2KMESSAGES) {
             // Dont overflow our static storage
-            // Yes yes I know should us dynamic storage
-            Serial.print("    ");
-            Serial.print(i);
-            Serial.print(" : ");
-            Serial.print(N2kSendMessages[i].Scheduler.IsEnabled()
-                             ? "(enabled)  "
-                             : "(disabled) ");
-            Serial.println(N2kSendMessages[i].Description);
+            // Yes yes I know should use dynamic storage eg vector
             cb[i] = lv_checkbox_create(body);
             lv_obj_remove_flag(cb[i], LV_OBJ_FLAG_SCROLLABLE);
             lv_checkbox_set_text(cb[i], N2kSendMessages[i].Description);
             lv_obj_add_state(cb[i], N2kSendMessages[i].Scheduler.IsEnabled());
             lv_obj_add_event_cb(cb[i], msg_event_handler, LV_EVENT_ALL, (void *)i);
+
+            // Add to the group for this screen so it can be scrolled by the encoder
+            lv_group_add_obj(group[SCR_MSG], cb[i]);
         }
     }
+
+    // start with the first entry at the top of the screen
     lv_obj_scroll_to(body, 0, 0, LV_ANIM_OFF);
     lv_obj_update_layout(body);
-    menus[SCR_MSG] = setupMenu(screen);
+    menus[SCR_MSG] = setupMenu(screen, SCR_MSG);
     return screen;
 }
 
@@ -374,6 +428,7 @@ void refreshMsgScreen() {
     size_t cnt = nN2kSendMessages;
     for (size_t i = 0; i < cnt; i++) {
         lv_obj_set_state(cb[i], LV_STATE_CHECKED, N2kSendMessages[i].Scheduler.IsEnabled());
+        lv_obj_set_style_bg_color(cb[i], lv_palette_main(LV_PALETTE_ORANGE), LV_PART_INDICATOR | LV_STATE_FOCUSED);
     }
 }
 
@@ -383,6 +438,9 @@ lv_obj_t* createCanScreen() {
     lv_obj_t * textArea;
     setupCommonstyles(screen);
     setupHeader(SCR_CAN, screen, "NMEA2000 CAN");
+
+    group[SCR_CAN] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_CAN], focus_cb);
 
     // Create a text area to display the info text
     // This takes up the right hand portion of the screen
@@ -403,7 +461,7 @@ lv_obj_t* createCanScreen() {
     refreshCanScreen();
  
     lv_obj_update_flag(textArea, LV_OBJ_FLAG_SCROLLABLE, true);
-    menus[SCR_CAN] = setupMenu(screen);
+    menus[SCR_CAN] = setupMenu(screen, SCR_CAN);
     return screen;
 }
 
@@ -452,15 +510,13 @@ void refreshCanScreen() {
             const char * nameStr = "";
             long pgn = it->first;
 
+            lv_obj_set_style_bg_color(button, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_MAIN | LV_STATE_FOCUSED);
             lv_obj_set_flex_flow(pgnBox, LV_FLEX_FLOW_ROW);
             lv_obj_clear_flag(pgnBox, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_set_style_pad_all(pgnBox, padding, 0);
             lv_obj_set_style_margin_all(pgnBox, 0, 0);
             lv_obj_set_width(pgnBox, lv_obj_get_width(area));
             lv_obj_set_height(pgnBox, BAR_HEIGHT);
-//            lv_obj_set_height(button, BAR_HEIGHT);
-
-
 
             // hand rolled find() equivalent
             bool found = false;
@@ -478,6 +534,9 @@ void refreshCanScreen() {
             lv_obj_center(label);
             lv_obj_add_event_cb(button, canButtonHandler, LV_EVENT_ALL, (void *)pgn);
             lv_obj_update_layout(area);
+
+            // Add the button to this screens group
+            lv_group_add_obj(group[SCR_CAN], button);
             it++;
         }
     }
@@ -498,6 +557,22 @@ void refreshSysinfo() {
     lv_textarea_set_text(textAreas[SCR_SYSINFO], s.data.c_str());
 }
 
+// Load a given screen if defined
+// Also sets the group to the screen and focusses on the first member of the
+// group if those exist
+void loadScreen(Screens s) {
+    if (screen[s]) {
+        lv_scr_load(screen[s]);
+        curscreen = s;
+        if (group[s]) {
+            lv_indev_set_group(rotaryIndev, group[s]);
+            if (firstFocus[s]) {
+                lv_group_focus_obj(firstFocus[s]);
+            }
+        }
+    }
+}
+
 void buttonHandler(lv_event_t* e) {
     void* target = lv_event_get_user_data(e);
 
@@ -509,9 +584,7 @@ void buttonHandler(lv_event_t* e) {
 //    Serial.printf("Button handler scr %d code %d\n", s, code);
     if (code == LV_EVENT_PRESSED) {
         if (s >= 0 && s < SCR_MAX && screen[s]) {
-            refreshSysinfo();
-            lv_scr_load(screen[s]);
-            curscreen = s;
+            loadScreen(s);
         }
     }
 }
