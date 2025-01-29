@@ -37,9 +37,6 @@ typedef struct {
 
 extern Stream *Console;
 
-// External declarations
-extern std::map<int, int> N2kMsgMap;
-
 // Initialise the wifi network
 void wifiSetup(String &hostName);
 
@@ -52,5 +49,8 @@ void wifiWork(void);
 // Disconnect
 void disconnectWifi();
 
-// retrun true if the wifi is connected
+// return true if the wifi is connected
 bool wifiConnected();
+
+// Return the local IP of this device
+const char * netInfo();

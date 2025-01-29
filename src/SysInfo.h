@@ -23,8 +23,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <Arduino.h>
-
-#include <map>
+#include <Interface.h>
 
 extern String WifiMode, WifiIP, WifiSSID;
 extern String host_name, macAddress;
@@ -33,5 +32,5 @@ extern String Model;
 void getNetInfo(Stream& s);
 void getSysInfo(Stream& s);
 int getCpuAvg(int core);
-void getN2kMsgs(Stream& s);
+void getN2kMsgs(Interface &iface, Stream &s, const char *);
 void printPGN(unsigned long);

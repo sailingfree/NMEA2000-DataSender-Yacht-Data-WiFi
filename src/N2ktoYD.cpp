@@ -73,7 +73,7 @@ void N2kToYD_Can(const tN2kMsg &msg, char *MsgBuf) {
     }
 }
 
-// Send to Yacht device clients over udp using the cast address
+// Send to Yacht device clients over udp using the broadcast address
 void GwSendYD(const tN2kMsg &N2kMsg) {
     IPAddress udpAddress = WiFi.broadcastIP();
     N2kToYD_Can(N2kMsg, YD_msg);             // Create YD message from PGN
@@ -81,7 +81,12 @@ void GwSendYD(const tN2kMsg &N2kMsg) {
     YDSendUDP.printf("%s\r\n", YD_msg);
     YDSendUDP.endPacket();
 
+    // Add this to the ydTx messages
+    
+
     char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
-    if (N2kToSeasmart(N2kMsg, millis(), buf, MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) return;
+    if (N2kToSeasmart(N2kMsg, millis(), buf, MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) {
+        return;
+    }
 }
 

@@ -52,3 +52,31 @@ https://www.reddit.com/r/arduino/comments/1bmywvg/trying_to_get_a_dmt48270c043_0
 
 // Use this calibration code in setup():
   uint16_t calData[5] = { 253, 3621, 248, 3625, 2 };
+
+
+  Adding pgn 59904 
+Adding pgn 59905 ????
+Adding pgn 59908 ????
+Adding pgn 59909 ????
+Adding pgn 59939 ????
+Adding pgn 61183 ????
+Adding pgn 126993 ****HEARTBEAT
+Adding pgn 127250 Heading
+Adding pgn 127258 ****Magnetic variation +++
+Adding pgn 127488 EngineRapid
+Adding pgn 127489 EngineDynamic
+Adding pgn 127508 ****Battery status +++
+Adding pgn 127513 BatteryConfig
+Adding pgn 128259 Speed
+Adding pgn 128267 WaterDepth
+Adding pgn 128275 ****DISTANCE LOG +++
+Adding pgn 130306 ****WIND DATA +++
+Adding pgn 130310 OutsideEnvironmental DEPRECATED
+Adding pgn 130311 ****ENVIRONMENTAL PARAMETERS  DEPRECATED +++
+Adding pgn 130312 Temperature DEPRECATED
+Adding pgn 130314 Pressure 
+Adding pgn 130316 TemperatureExt
+Adding pgn 130822 ???? Proprietary
+
+**** Missing from the decode?
++++ Latest n2kmessages.h has this

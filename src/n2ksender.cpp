@@ -14,6 +14,7 @@
 #include <N2ktoYD.h>
 #include <GwShell.h>
 #include <GwPrefs.h>
+#include <msgstats.h>
 
 
 // List of n2k devices for the device scanner
@@ -25,10 +26,6 @@ void CheckLoopTime();
 using tN2kSendFunction = void (*)();
 void addCommands();
 
-
-
-
-
 static unsigned long N2kMsgSentCount = 0;
 static unsigned long N2kMsgFailCount = 0;
 
@@ -36,6 +33,7 @@ static unsigned long N2kMsgFailCount = 0;
 // These are saved in the preferences
 static bool enableCAN = false;
 static bool enableYD = false;
+static bool enableYDRX = false;
 
 // Other toggles are reset at startup
 static bool ShowSentMessages = false;
@@ -94,7 +92,10 @@ static void handle_gw_msgs(const tN2kMsg &N2kMsg) {
         case 130313:   // Humidity
         case 130314:   // Pressure
         default:
-            Serial.printf("Handling PGN %ld\n", PGN);
+//            Serial.printf("Handling PGN %ld\n", PGN);
+
+            // Add to the received CAN message map
+            canRX.addMsg(N2kMsg);
             break;
     }
 }
@@ -126,11 +127,13 @@ void setupN2ksender() {
 
     // Add sender specific preference keys
     GwAddReg(YDENABLE);
+    GwAddReg(YDRXENABLE);
     GwAddReg(CANENBALE);
     GwAddReg(N2KMAP);
 
     // Get the values of the toggles from the preferences
     enableYD = GwGetInt(YDENABLE);
+    enableYDRX = GwGetInt(YDRXENABLE);
     enableCAN = GwGetInt(CANENBALE);
 
     // Read the map of enabled messages and set their send state
@@ -140,6 +143,11 @@ void setupN2ksender() {
     // This does not work on small memory devices like Uno or Mega
     // This version should work with smaller buffer, since message sending has been offsetted.
     NMEA2000.SetN2kCANSendFrameBufSize(250);
+    NMEA2000.SetN2kCANReceiveFrameBufSize(250);
+    NMEA2000.SetN2kCANSendFrameBufSize(250);
+
+    pN2kDeviceList = new tN2kDeviceList(&NMEA2000);
+
     // Set Product information
     NMEA2000.SetProductInformation("200",                                   // Manufacturer's Model serial code
                                    2047,                                    // Manufacturer's product code
@@ -167,18 +175,24 @@ void setupN2ksender() {
     NMEA2000.ExtendTransmitMessages(TransmitMessages);
     NMEA2000.ExtendReceiveMessages(ReceiveMessages);
     NMEA2000.Open();
+    NMEA2000.ParseMessages(); // Start address claim
 }
 
 // *****************************************************************************
+// This does the sending to the YD and CAN interfaces.
 void SendN2kMsg(const tN2kMsg &N2kMsg) {
     if (enableYD) {
         GwSendYD(N2kMsg);
+
+        // Add to the stats for YD TX
+        ydTX.addMsg(N2kMsg);
     }
 
     if (enableCAN) {
-//        Serial.printf("Going to send PGN %ld\n", N2kMsg.PGN);
         if (NMEA2000.SendMsg(N2kMsg)) {
             N2kMsgSentCount++;
+            // add to the stats for the CAN TX interface
+            canTX.addMsg(N2kMsg);
         } else {
             N2kMsgFailCount++;
         }
@@ -214,7 +228,9 @@ void SendN2kMessages() {
         NextSend = Now + 2000;
         for (size_t i = 0; i < nN2kSendMessages; i++) {
             NextMsgSend = CheckSendMessage(N2kSendMessages[i]);
-            if (NextMsgSend < NextSend) NextSend = NextMsgSend;
+            if (NextMsgSend < NextSend) {
+                NextSend = NextMsgSend;
+            }
         }
     }
 }
@@ -827,6 +843,13 @@ int ToggleYD(int argc, char ** argv) {
     return 0;
 }
 
+int ToggleYDRX(int argc, char ** argv) {
+    enableYDRX = !enableYDRX;
+    GwSetInt(YDRXENABLE, enableYDRX);
+    Serial.printf("YD receive %s\n", enableYDRX ? "enabled" : "disabled");
+    return 0;
+}
+
 // *****************************************************************************
 int SendMessageNow(int argc, char ** argv) {
     if (!HasParam(argc, argv)) {
@@ -919,12 +942,12 @@ void PrintDevice(const tNMEA2000::tDevice *pDevice, Stream &stream) {
     stream.printf("  Model version:            %s\n", pDevice->GetModelVersion());
     stream.printf("  Manufacturer Information: ");
     PrintText(pDevice->GetManufacturerInformation(), true, stream);
-    stream.printf("  Installation description1: ");
-    PrintText(pDevice->GetInstallationDescription1(), true, stream);
-    stream.printf("  Installation description2: ");
-    PrintText(pDevice->GetInstallationDescription2(), true, stream);
-    PrintUlongList("  Transmit PGNs :", pDevice->GetTransmitPGNs(), stream);
-    PrintUlongList("  Receive PGNs  :", pDevice->GetReceivePGNs(), stream);
+//    stream.printf("  Installation description1: ");
+//    PrintText(pDevice->GetInstallationDescription1(), true, stream);
+//    stream.printf("  Installation description2: ");
+//    PrintText(pDevice->GetInstallationDescription2(), true, stream);
+//    PrintUlongList("  Transmit PGNs :", pDevice->GetTransmitPGNs(), stream);
+//    PrintUlongList("  Receive PGNs  :", pDevice->GetReceivePGNs(), stream);
     stream.printf("\n");
 }
 
@@ -949,12 +972,12 @@ void ListDevices(Stream &stream, bool force = false) {
                 stream.println();
             }
         }
-        return;
+//        return;
     }
     if (!force && !pN2kDeviceList->ReadResetIsListUpdated()) return;
 
-    // stream.println();
-    //  stream.println("**********************************************************************");
+    stream.println();
+    stream.println("**********************************************************************");
     for (uint8_t i = 0; i < N2kMaxBusDevices; i++) {
         PrintDevice(pN2kDeviceList->FindDeviceBySource(i), stream);
     }

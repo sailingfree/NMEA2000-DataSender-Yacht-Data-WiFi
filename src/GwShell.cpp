@@ -28,6 +28,8 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <SimpleSerialShell.h>
 #include <StringStream.h>
 #include <SysInfo.h>
+#include <Interface.h>
+#include <msgstats.h>
 
 #include <map>
 
@@ -66,9 +68,12 @@ int net(int argc, char** argv) {
 }
 
 // Print the messages that have been seen incoming
-int messages(int argc, char** argv) {
+int messages(int argc, char **argv) {
     StringStream s;
-    getN2kMsgs(s);
+    getN2kMsgs(canRX, s,"CANRX");
+    getN2kMsgs(canTX, s, "CANTX");
+    getN2kMsgs(ydRX, s, "YDRX");
+    getN2kMsgs(ydTX, s, "YDTX");
     shell.print(s.data);
     return 0;
 }

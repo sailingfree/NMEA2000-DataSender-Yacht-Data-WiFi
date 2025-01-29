@@ -9,7 +9,7 @@
 
 // Constructor. Binds to the parent object.
 Indicator::Indicator(lv_obj_t *parent, const char *name, uint32_t x,
-                     uint32_t y) {
+                     uint32_t y, void (*cb)(lv_event_t * ev), void* userData) {
     container = lv_obj_create(parent);
     lv_obj_set_pos(container, x, y);
     lv_obj_set_width(container, IND_WIDTH - (2 * padding));
@@ -17,6 +17,8 @@ Indicator::Indicator(lv_obj_t *parent, const char *name, uint32_t x,
 
     lv_style_init(&style);
     lv_style_set_border_width(&style, border);
+    lv_style_set_pad_all(&style, 0);
+    lv_style_set_pad_left(&style, 10);
     lv_obj_add_style(container, &style, 0);
 
     lv_obj_set_layout(container, LV_LAYOUT_FLEX);
@@ -28,16 +30,24 @@ Indicator::Indicator(lv_obj_t *parent, const char *name, uint32_t x,
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_style_init(&text_style);
-    lv_style_set_text_font(&text_style, &RobotoCondensedVariableFont_wght8);
+    lv_style_set_text_font(&text_style, &RobotoCondensedVariableFont_wght24);
+    lv_style_set_pad_all(&text_style, 0);
     lv_obj_add_style(label, &text_style, 0);
 
     text = lv_label_create(container);
     lv_style_init(&value_style);
     lv_style_set_text_font(&value_style, &RobotoCondensedVariableFont_wght32);
+    lv_style_set_pad_all(&value_style, 0);
     lv_obj_add_style(text, &value_style, 0);
     lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_label_set_text(text, "---");
+
+    // If a callback was supplied add it to the main widget and set th efocus colour
+    if(cb) {
+        lv_obj_add_event_cb(container, cb, LV_EVENT_CLICKED, userData);
+        lv_obj_set_style_bg_color(container, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_MAIN | LV_STATE_FOCUSED);
+    }
 }
 
 // Change the text size
@@ -227,7 +237,7 @@ StateButton::StateButton(lv_obj_t * parent, const char * label, uint32_t x, uint
 
     value = lv_label_create(container);
     lv_style_init(&value_style);
-    lv_style_set_text_font(&value_style, &RobotoCondensedVariableFont_wght52);
+    lv_style_set_text_font(&value_style, &RobotoCondensedVariableFont_wght32);
     lv_style_set_text_color(&value_style, lv_color_white());
     lv_obj_add_style(value, &value_style, 0);
     lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_CENTER, 0);

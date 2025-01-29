@@ -6,7 +6,9 @@
 
 // N2K sender preference keys
 #define YDENABLE    "ydenable"
+#define YDRXENABLE  "ydrxenable"
 #define CANENBALE   "canenable"
+
 #define N2KMAP      "n2kmap"
 #define MAXN2KMESSAGES 32   // max number of messages we can send. This could be dangerous if we decide to add any to the n2ksender
 
@@ -38,6 +40,7 @@ int ToggleForward(int, char**);
 int ClearStatistics(int, char**);
 int ToggleMsgSending(int, char**Params);
 int ToggleYD(int, char**params);
+int ToggleYDRX(int, char**params);
 int SendMessageNow(int, char**Params);
 int SetMessagePeriod(int, char**Params);
 int SetMessageOffset(int, char**Params);
@@ -45,6 +48,9 @@ int EnableAllMessages(int, char**);
 int DisableAllMessages(int, char**);
 int ListMessages(int, char**);
 int printSummary(int, char**);
+
+void ListDevices(Stream &stream, bool force);
+
 // save the map as a preference
 void saveMap();
 // Create the map and save it in enableMap

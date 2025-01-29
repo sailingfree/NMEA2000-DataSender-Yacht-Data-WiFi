@@ -22,7 +22,6 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <Arduino.h>
-//#include <ESP.h>
 #include <GwPrefs.h>
 #include <NMEA0183Messages.h>
 #include <N2kMessages.h>
@@ -32,6 +31,8 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "uptime_formatter.h"
 #include <StringStream.h>
 #include <display.h>
+#include <Interface.h>
+#include <msgstats.h>
 
 void getNetInfo(Stream &s) {
     wifi_sta_list_t wifi_sta_list;
@@ -105,32 +106,22 @@ void getSysInfo(Stream &s) {
     s.println("=========== END ==========");
 }
 
-extern std::map<int, int> N2kMsgMap;
-void getN2kMsgs(Stream &s) {
-    std::map<int, int>::iterator it = N2kMsgMap.begin();
+// List the n2k messages on a given interface and send to the supplied stream
+void getN2kMsgs(Interface &iface, Stream &s, const char * title) {
+    pgnCount count;
+    s.printf("======== %s Messages ====\n", title);
 
-    s.println("======== N2K Messages ====");
+    // Start at the begining
+    iface.countBegin();
 
-    while (it != N2kMsgMap.end()) {
-        s.printf("%d %d\n", it->first, it->second);
-        it++;
+    while(iface.countNext(count)) {
+        s.printf("%d %d\n", count.pgn, count.count);
     }
+
     s.println("=========== END ==========");
 }
 
 // Find and print a PGN
-extern std::map<int, tN2kMsg> N2kLastMessage;
-std::map<int, tN2kMsg>::iterator iter;
-
 void printPGN(unsigned long PGN) {
-    iter = N2kLastMessage.find(PGN);
-    if(iter == N2kLastMessage.end()) {
-        Serial.printf("No messages with PGN %ld found\n", PGN);
-    } else {
-        StringStream output;
-        Serial.printf("Message with PGN %ld found\n", PGN);
-        HandleNMEA2000Msg(iter->second, & output);
-        updateTextArea(SCR_CAN, output.data);
-        Serial.printf("%s\n", output.data.c_str());
-    }
+
 }

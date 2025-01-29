@@ -18,16 +18,21 @@
 #include <GwPrefs.h>
 #include <n2ksender.h>
 #include <n2kdatadecode.h>
+#include <MyWiFi.h>
+#include <msgstats.h>
+#include <Interface.h>
 
 // Forward decls
 lv_obj_t *createMain();
 lv_obj_t *createCanScreen();
 lv_obj_t *createMsgScreen();
 lv_obj_t *createSysInfoScreen();
+lv_obj_t *createNetInfoScreen();
+lv_obj_t *createDevInfoScreen();
 void refreshMainScreen();
 void refreshMsgScreen();
-void refreshCanScreen();
 void refreshSysinfo();
+void refreshNetinfo();
 void loadScreen(Screens s);
 
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is
@@ -37,21 +42,13 @@ void loadScreen(Screens s);
 // The display object
 TFT_eSPI * tft;
 
-// Map for received messages
-extern std::map<int, int> N2kMsgMap;
-
-// Map to convert between enum and strings for the n2k PGNs we are interested in
-extern std::map<long, const char *> pgnToStr;
-
-// Map of the last message for each PNG received
-extern std::map<int, tN2kMsg> N2kLastMessage;
-
 // Here we save pointers to the created screens and their children.
 // Could be better done with classes!
 static lv_obj_t *screen[SCR_MAX];
 static InfoBar *bars[SCR_MAX];
 static MenuBar *menus[SCR_MAX];
-static StateButton *ind[SCR_MAX][12];
+static StateButton *stateButtons[SCR_MAX][12];
+static Indicator * ind[SCR_MAX][12];
 
 // define the text areas
 static lv_obj_t *textAreas[SCR_MAX];
@@ -65,7 +62,7 @@ static Screens curscreen = SCR_INVALID;
 // Callbacks to refresh each screen
 // NULL means no callback
 // Called periodically from the main loop
-static void(* refreshCb [SCR_MAX])() = {refreshMainScreen, refreshMsgScreen, refreshCanScreen, refreshSysinfo};
+static void(* refreshCb [SCR_MAX])() = {refreshMainScreen, refreshMsgScreen, refreshSysinfo, refreshNetinfo};
 
 // Groups for navigation
 static lv_group_t *group[SCR_MAX];
@@ -98,7 +95,6 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
 
     bool touched = tft->getTouch(&touchX, &touchY, 600);
 
-
     if (!touched) {
         data->state = LV_INDEV_STATE_REL;
     } else {
@@ -128,7 +124,7 @@ void my_rotary_read(lv_indev_t *indev, lv_indev_data_t *data) {
             break;
         }
         data->continue_reading = false;
-        Serial.printf("Rotary callback %d\n", ev);
+//        Serial.printf("Rotary callback %d\n", ev);
     }
 }
 
@@ -154,6 +150,7 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_m
 }
 
 // Initialise lvgl and assign the tft_espi device as the display driver
+// register the touch screen and rotary control as input devices
 void displayInit() {
     Serial.printf("Display Init\n");
     Serial.printf("DRAWBUFSIZE %d\n", DRAW_BUF_SIZE);
@@ -217,7 +214,9 @@ void displayInit() {
     screen[SCR_MSG]  = createMsgScreen();
     screen[SCR_CAN] = createCanScreen();
     screen[SCR_SYSINFO] = createSysInfoScreen();
-
+    screen[SCR_NETINFO] = createNetInfoScreen();
+    screen[SCR_DEVINFO] = createDevInfoScreen();
+    
     // Start with the first screen
     loadScreen(SCR_MAIN);
     handleDisplay();
@@ -252,10 +251,10 @@ static void setupCommonstyles(lv_obj_t *obj) {
 
 // Group focus callback
 void focus_cb(lv_group_t * g) {
-    Serial.printf("Group focus callback\n");
+//    Serial.printf("Group focus callback\n");
 }
 
-// Draw a header for the screen. has a title and a clock
+// Draw a header for the screen. The header has a title and a clock
 static void setupHeader(Screens scr, lv_obj_t *screen, const char *title) {
     // Info bar at the top
     InfoBar *bar = new InfoBar(screen, BAR_ROW_TOP);
@@ -268,9 +267,8 @@ static MenuBar * setupMenu(lv_obj_t *screen, Screens scr) {
     MenuBar *menuBar = new MenuBar(screen, BAR_ROW_BOTTOM);
     menuBar->addButton("Home", SCR_MAIN);
     menuBar->addButton("Msg", SCR_MSG);
-    menuBar->addButton("Can", SCR_CAN);
     menuBar->addButton("Info", SCR_SYSINFO);
-    menuBar->addButton("Sys", SCR_SYSINFO);
+    menuBar->addButton("Net", SCR_NETINFO);
 
     int nb = menuBar->buttons.size();
     // Save the first object to focus on when screen shown
@@ -282,6 +280,120 @@ static MenuBar * setupMenu(lv_obj_t *screen, Screens scr) {
 
     return menuBar;
 }
+
+
+// Callback when one of the can messages has been selected.
+// This decodes the last message and displays it on the right side of the CAN screen
+void canButtonHandler(lv_event_t *e) {
+    lv_obj_t * obj = lv_event_get_current_target_obj(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    Interface * iface = (Interface *) lv_obj_get_user_data(obj);
+    int pgn = (int) lv_event_get_user_data(e);
+    PgnMsg pgnMsg;
+
+    if(iface && code == LV_EVENT_PRESSED) {
+        Serial.printf("PGN %d iface %p\n", pgn, iface);
+        
+        bool hasmsg = iface->findLastMessage(pgn, pgnMsg);
+
+        if (!hasmsg) {
+            Serial.printf("No messages with PGN %d found\n", pgn);
+        } else {
+            StringStream output;
+            Serial.printf("Message with PGN %d found\n", pgn);
+            HandleNMEA2000Msg(pgnMsg.msg, &output);
+            updateTextArea(SCR_CAN, output.data);
+            Serial.printf("%s\n", output.data.c_str());
+        }
+    }
+}
+
+
+// Update the list of messages seen for an interface
+// The messages are shown with the PGN and if clicked will show the decode
+// of the last saved message in the right hand side of the screen
+// The list gets recreated for each message stats object
+void displayCanStats(Interface *iface) {
+    Screens scr = SCR_CAN;
+    lv_obj_t *area = secondArea[scr];
+    PgnMsg msg;
+    String blank;
+
+    // Clear any previous objects
+    lv_obj_clean(area);    
+    updateTextArea(SCR_CAN, blank);
+
+    // Initialise the iterator
+    iface->msgBegin();
+
+    while (iface->msgNext(msg)) {
+        lv_obj_t *pgnBox = lv_obj_create(area);
+        lv_obj_t *button = lv_button_create(pgnBox);
+        lv_obj_t *label = lv_label_create(button);
+        lv_obj_t *name = lv_label_create(pgnBox);
+        const char *nameStr = pgnToStr.getStr(msg.pgn);
+
+//        Serial.printf("Adding msg button for pgn %d\n", msg.pgn);
+
+        lv_obj_set_style_bg_color(button, lv_palette_main(LV_PALETTE_ORANGE),
+                                  LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_flex_flow(pgnBox, LV_FLEX_FLOW_ROW);
+        lv_obj_clear_flag(pgnBox, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_pad_all(pgnBox, padding, 0);
+        lv_obj_set_style_margin_all(pgnBox, 0, 0);
+        lv_obj_set_width(pgnBox, lv_obj_get_width(area));
+        lv_obj_set_height(pgnBox, BAR_HEIGHT);
+
+        lv_label_set_text(label, String(msg.pgn).c_str());
+        lv_label_set_text(name, nameStr);
+        lv_obj_center(label);
+
+        // Pass the interface in the button object
+        lv_obj_set_user_data(button, (void*)iface);
+
+        lv_obj_add_event_cb(button, canButtonHandler, LV_EVENT_ALL,
+                            (void *)msg.pgn);
+        lv_obj_update_layout(area);
+
+        // Add the button to this screens group
+        lv_group_add_obj(group[SCR_CAN], button);
+    }
+
+    // Now show the screen
+    loadScreen(SCR_CAN);
+
+    // Update the title in the infobar
+    bars[SCR_CAN]->setValue(iface->name.c_str());
+}
+
+// Callback for an indicator which shows the list of messages
+void msgCb(lv_event_t * ev) {
+    void * userData = lv_event_get_user_data(ev);
+    lv_event_code_t code = lv_event_get_code(ev);
+//    Serial.printf("Indicator callback: code %d data %p\n", code, userData);
+    if(userData) {
+        Interface * iface = (Interface *) userData;
+        displayCanStats(iface);
+    }
+}
+
+// Callback for the devices indicator to list the devices seen on the CAN bus
+void displayDevices(lv_event_t * e) {
+    StringStream devices;
+
+    ListDevices(devices, false);
+    updateTextArea(SCR_DEVINFO, devices.data);
+    
+    // Now show the screen
+    loadScreen(SCR_DEVINFO);
+
+    // Update the title
+    bars[SCR_DEVINFO]->setValue("CAN Bus devices");
+
+    // And focus the text area for scrolling
+    lv_group_focus_obj(textAreas[SCR_DEVINFO]);
+}
+
 
 // The main screen.
 lv_obj_t *createMain() {
@@ -308,15 +420,35 @@ lv_obj_t *createMain() {
     lv_obj_add_style(body, &style, 0);
 
     // the main buttons showing the state of the settings
-    ind[SCR_MAIN][SBIDX_CAN] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
-    ind[SCR_MAIN][SBIDX_YD] = new StateButton(body, "YD", COL1, ROW2, YDENABLE);
+    stateButtons[SCR_MAIN][SBIDX_CAN] = new StateButton(body, "CAN", COL1, ROW1, CANENBALE);
+    stateButtons[SCR_MAIN][SBIDX_YD] = new StateButton(body, "YDTX", COL1, ROW2, YDENABLE);
+    stateButtons[SCR_MAIN][SBIDX_YDRX] = new StateButton(body, "YDRX", COL1, ROW3, YDRXENABLE);
 
-    ind[SCR_MAIN][0]->callBack = ToggleSending;
-    ind[SCR_MAIN][1]->callBack = ToggleYD;
+    stateButtons[SCR_MAIN][0]->callBack = ToggleSending;
+    stateButtons[SCR_MAIN][1]->callBack = ToggleYD;
+    stateButtons[SCR_MAIN][2]->callBack = ToggleYDRX;
+
+    // Indicators for the messages and status. These when clicked will show the detais
+    ind[SCR_MAIN][IND_CAN_IN] = new Indicator(body, "Can RX", COL2, ROW1, msgCb, & canRX);
+    ind[SCR_MAIN][IND_CAN_OUT] = new Indicator(body, "Can TX", COL3, ROW1, msgCb, & canTX);
+    ind[SCR_MAIN][IND_YD_IN] = new Indicator(body, "YD RX", COL2, ROW2, msgCb, & ydRX);
+    ind[SCR_MAIN][IND_YD_OUT] = new Indicator(body, "YD TX", COL3, ROW2, msgCb, & ydTX);
+    ind[SCR_MAIN][IND_DEVICES] = new Indicator(body, "Devices", COL2, ROW3, displayDevices);
+
+    ind[SCR_MAIN][IND_NET] = new Indicator(body, "Net", COL3, ROW3);
+    ind[SCR_MAIN][IND_NET]->setValue("Not connected");
 
     // add the buttons to the group for rotary select
-    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][0]->getContainer());
-    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][1]->getContainer());
+    lv_group_add_obj(group[SCR_MAIN], stateButtons[SCR_MAIN][0]->getContainer());
+    lv_group_add_obj(group[SCR_MAIN], stateButtons[SCR_MAIN][1]->getContainer());
+    lv_group_add_obj(group[SCR_MAIN], stateButtons[SCR_MAIN][2]->getContainer());
+
+    // And the indicators as well
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][IND_CAN_IN]->container);
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][IND_CAN_OUT]->container);
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][IND_YD_IN]->container);
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][IND_YD_OUT]->container);
+    lv_group_add_obj(group[SCR_MAIN], ind[SCR_MAIN][IND_DEVICES]->container);
 
     menus[SCR_MAIN] = setupMenu(screen, SCR_MAIN);
 
@@ -324,12 +456,22 @@ lv_obj_t *createMain() {
 }
 
 void refreshMainScreen() {
-    if(ind[SCR_MAIN][SBIDX_CAN]) {
-        ind[SCR_MAIN][SBIDX_CAN]->update();
+    if(stateButtons[SCR_MAIN][SBIDX_CAN]) {
+        stateButtons[SCR_MAIN][SBIDX_CAN]->update();
     }
-    if(ind[SCR_MAIN][SBIDX_YD]) {
-        ind[SCR_MAIN][SBIDX_YD]->update();
+    if(stateButtons[SCR_MAIN][SBIDX_YD]) {
+        stateButtons[SCR_MAIN][SBIDX_YD]->update();
     }
+    if(stateButtons[SCR_MAIN][SBIDX_YDRX]) {
+        stateButtons[SCR_MAIN][SBIDX_YDRX]->update();
+    }
+
+    ind[SCR_MAIN][IND_CAN_IN]->setValue(String(canRX.count()).c_str());
+    ind[SCR_MAIN][IND_CAN_OUT]->setValue(String(canTX.count()).c_str());
+    ind[SCR_MAIN][IND_YD_IN]->setValue(String(ydRX.count()).c_str());
+    ind[SCR_MAIN][IND_YD_OUT]->setValue(String(ydTX.count()).c_str());
+
+    ind[SCR_MAIN][IND_NET]->setValue(netInfo());
 }
 
 lv_obj_t* createSysInfoScreen() {
@@ -350,6 +492,62 @@ lv_obj_t* createSysInfoScreen() {
     menus[SCR_SYSINFO] = setupMenu(screen, SCR_SYSINFO);
     return screen;
 }
+
+// Callback for a text area event
+void text_scroller(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * obj = lv_event_get_target_obj(e);
+//    Serial.printf("Text area event %d\n", code);
+}
+
+
+
+lv_obj_t* createDevInfoScreen() {
+    lv_obj_t* screen = lv_obj_create(NULL);
+    setupCommonstyles(screen);
+    setupHeader(SCR_DEVINFO, screen, "System Info");
+
+    group[SCR_DEVINFO] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_DEVINFO], focus_cb);
+
+    // Create a text area to display the info text
+    textAreas[SCR_DEVINFO] = lv_textarea_create(screen);
+    lv_obj_set_size(textAreas[SCR_DEVINFO], DISP_WIDTH, BODY_HEIGHT);
+    lv_obj_align(textAreas[SCR_DEVINFO], LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(textAreas[SCR_DEVINFO], &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_update_flag(textAreas[SCR_DEVINFO], LV_OBJ_FLAG_SCROLLABLE, true);
+    menus[SCR_DEVINFO] = setupMenu(screen, SCR_DEVINFO);
+
+    lv_obj_set_style_bg_color(textAreas[SCR_DEVINFO], lv_palette_main(LV_PALETTE_ORANGE), LV_PART_SCROLLBAR | LV_STATE_FOCUSED);
+
+    // Add a scroll callback to the text area for the rotary encoder
+    lv_obj_add_event_cb(textAreas[SCR_DEVINFO], text_scroller, LV_EVENT_ALL, NULL);
+
+    // Add the text area to the focus group so we can scroll the text
+    lv_group_add_obj(group[SCR_DEVINFO], textAreas[SCR_DEVINFO]);
+    return screen;
+}
+
+lv_obj_t* createNetInfoScreen() {
+    lv_obj_t* screen = lv_obj_create(NULL);
+    setupCommonstyles(screen);
+    setupHeader(SCR_NETINFO, screen, "Network Info");
+
+    group[SCR_NETINFO] = lv_group_create();
+    lv_group_set_focus_cb(group[SCR_NETINFO], focus_cb);
+
+    // Create a text area to display the info text
+    textAreas[SCR_NETINFO] = lv_textarea_create(screen);
+    lv_obj_set_size(textAreas[SCR_NETINFO], DISP_WIDTH, BODY_HEIGHT);
+    lv_obj_align(textAreas[SCR_NETINFO], LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(textAreas[SCR_NETINFO], &UbuntuMonoB16, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_update_flag(textAreas[SCR_NETINFO], LV_OBJ_FLAG_SCROLLABLE, true);
+    menus[SCR_NETINFO] = setupMenu(screen, SCR_NETINFO);
+    return screen;
+}
+
 
 // Callback for the message list checkboxes when a checkbox is selected
 // The user data is the index into the N2kSendMessages array
@@ -427,6 +625,8 @@ void refreshMsgScreen() {
 }
 
 
+// The CAN screen lists the messages for an interface and allows the user to 
+// select a mesage and see the decode
 lv_obj_t* createCanScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
     lv_obj_t * textArea;
@@ -451,91 +651,9 @@ lv_obj_t* createCanScreen() {
     lv_obj_set_style_pad_all(body, padding, 0);
     lv_obj_set_style_margin_all(body, 0, 0);
 
-    refreshCanScreen();
- 
     lv_obj_update_flag(textArea, LV_OBJ_FLAG_SCROLLABLE, true);
     menus[SCR_CAN] = setupMenu(screen, SCR_CAN);
     return screen;
-}
-
-// Callback when one of the can messages has been slected.
-// This decodes the last message and displays it on th eright side of the CAN screen
-void canButtonHandler(lv_event_t *e) {
-    std::map<int, tN2kMsg>::iterator iter;
-    long int pgn = (long int)lv_event_get_user_data(e);
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSED) {
-        Serial.printf("PGN %ld\n", pgn);
-        iter = N2kLastMessage.find(pgn);
-        if (iter == N2kLastMessage.end()) {
-            Serial.printf("No messages with PGN %ld found\n", pgn);
-        } else {
-            StringStream output;
-            Serial.printf("Message with PGN %ld found\n", pgn);
-            HandleNMEA2000Msg(iter->second, &output);
-            updateTextArea(SCR_CAN, output.data);
-            Serial.printf("%s\n", output.data.c_str());
-        }
-    }
-}
-
-// Update the list of messages seen
-// Only do an update if the number of messages has changed since last time
-// The messages are shown with the PGN and if clicked will show the decode
-// of the last saved message in the right hand side of the screen
-void refreshCanScreen() {
-    static size_t lastCount = 0;
-    size_t thisCount = N2kMsgMap.size();
-    Screens scr = SCR_CAN;
-    lv_obj_t *area = secondArea[scr];
-
-    // Clear the existing list if list changed
-    if (area && thisCount > lastCount) {
-        lv_obj_clean(area);        
-        std::map<int, int>::iterator it = N2kMsgMap.begin();
-        std::map<long, const char *>::iterator it2;
-        
-        while (it != N2kMsgMap.end()) {
-            it2 = pgnToStr.begin();
-            lv_obj_t *pgnBox = lv_obj_create(area);
-            lv_obj_t *button = lv_button_create(pgnBox);
-            lv_obj_t *label = lv_label_create(button);
-            lv_obj_t *name = lv_label_create(pgnBox);
-            const char * nameStr = "";
-            long pgn = it->first;
-
-            lv_obj_set_style_bg_color(button, lv_palette_main(LV_PALETTE_ORANGE), LV_PART_MAIN | LV_STATE_FOCUSED);
-            lv_obj_set_flex_flow(pgnBox, LV_FLEX_FLOW_ROW);
-            lv_obj_clear_flag(pgnBox, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_style_pad_all(pgnBox, padding, 0);
-            lv_obj_set_style_margin_all(pgnBox, 0, 0);
-            lv_obj_set_width(pgnBox, lv_obj_get_width(area));
-            lv_obj_set_height(pgnBox, BAR_HEIGHT);
-
-            // hand rolled find() equivalent
-            bool found = false;
-            while (!found && it2 != pgnToStr.end()) {
-                if(it2->first == pgn) {
-                    nameStr = it2->second;
-                    found = true;
-                }
-                it2++;
-            }
-
-            Serial.printf("Adding pgn %ld %s\n", pgn, nameStr);
-            lv_label_set_text(label, String(pgn).c_str());
-            lv_label_set_text(name, nameStr);
-            lv_obj_center(label);
-            lv_obj_add_event_cb(button, canButtonHandler, LV_EVENT_ALL, (void *)pgn);
-            lv_obj_update_layout(area);
-
-            // Add the button to this screens group
-            lv_group_add_obj(group[SCR_CAN], button);
-            it++;
-        }
-    }
-
-    lastCount = thisCount;
 }
 
 // Dummy. This could be used to put boot messages on the first screen.
@@ -544,13 +662,20 @@ void displayText(const char * txt) {
     Serial.printf("Displaying '%s'\n", txt);
 }
 
-// Refresh the info in the sysinfo page
+// Refresh the sysinfo page
 void refreshSysinfo() {
     StringStream s;
     s.clear();
     getSysInfo(s);
-    getNetInfo(s);
     lv_textarea_set_text(textAreas[SCR_SYSINFO], s.data.c_str());
+}
+
+// Refresh the netinfo page
+void refreshNetinfo() {
+    StringStream s;
+    s.clear();
+    getNetInfo(s);
+    lv_textarea_set_text(textAreas[SCR_NETINFO], s.data.c_str());
 }
 
 // Load a given screen if defined
@@ -586,10 +711,14 @@ void buttonHandler(lv_event_t* e) {
     }
 }
 
-// Draw the supplied text into teh requied screen text area
+// Draw the supplied text into the requied screen text area
 void updateTextArea(Screens scr, String & val) {
     if(scr >= SCR_MAIN && scr < SCR_MAX) {
         lv_textarea_set_text(textAreas[scr], val.c_str());
         lv_obj_scroll_to(textAreas[scr], 0, 0, LV_ANIM_OFF);
     }
+}
+
+void updateNetInfo(const char * info) {
+    ind[SCR_MAIN][IND_NET]->setValue(info);
 }

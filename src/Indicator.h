@@ -6,10 +6,11 @@
 // eg voltage, a smaller header. It is designed to work with the lvgl library
 // on an ESP32 or similar.
 // It has a fixed size.
+// An optional callback and callback arg can be supplied
 class Indicator {
    public:
     // Constructor:
-    Indicator(lv_obj_t *parent, const char *label, uint32_t x, uint32_t y);
+    Indicator(lv_obj_t *parent, const char *label, uint32_t x, uint32_t y, void (*cb)(lv_event_t *) = NULL, void* =NULL );
 
     void setValue(const char *value);
 
@@ -27,6 +28,9 @@ class Indicator {
     lv_style_t text_style;
     lv_style_t value_style;
     lv_style_t style;
+
+    void* cbArg;
+    void (*callback)();
 
     // The interval used for moving averages
     static const int interval = 4;  

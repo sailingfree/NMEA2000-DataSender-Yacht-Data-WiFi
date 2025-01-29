@@ -8,7 +8,9 @@ typedef enum {
     SCR_MAIN = 0,       // Main window with controls and summary
     SCR_MSG,            // message controls
     SCR_CAN,            // Can related info
-    SCR_SYSINFO,        // system and network info
+    SCR_SYSINFO,        // system info
+    SCR_NETINFO,        // network
+    SCR_DEVINFO,        // CAN bus devices
     SCR_MAX,
 } Screens;
 
@@ -23,9 +25,20 @@ typedef enum {
 // StateButton indexes
 typedef enum {
     SBIDX_CAN = 0,
-    SBIDX_YD
-}
-StateButtonIndex;
+    SBIDX_YD,
+    SBIDX_YDRX
+} StateButtonIndex;
+
+// Indicators
+typedef enum {
+    IND_CAN_IN,
+    IND_CAN_OUT,
+    IND_YD_IN,
+    IND_YD_OUT,
+    IND_DEVICES,
+    IND_NET
+} Inds;
+
 // define the diemsnions of the actual tft display
 #undef TFT_WIDTH
 #undef TFT_HEIGHT
@@ -46,7 +59,7 @@ StateButtonIndex;
 #define BODY_HEIGHT     (DISP_HEIGHT - BAR_HEIGHT - BAR_MENU_HEIGHT)
 #define IND_HEIGHT      (BODY_HEIGHT / 3)
 #define IND_WIDTH       (DISP_WIDTH / 2)
-#define ROW1            (BAR_HEIGHT)
+#define ROW1            (0)   // Relative to the top of the body 
 #define ROW2            (ROW1 + IND_HEIGHT)
 #define ROW3            (ROW2 + IND_HEIGHT)
 
@@ -70,3 +83,4 @@ void handleDisplay();
 void displayText(const char * txt);
 void buttonHandler(lv_event_t* e);
 void updateTextArea(Screens scr, String & val);
+void updateNetInfo(const char * info);
