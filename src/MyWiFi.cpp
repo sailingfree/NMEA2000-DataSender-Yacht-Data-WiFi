@@ -31,6 +31,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <n2kdatadecode.h>
 #include <msgstats.h>
 #include <SysInfo.h>
+#include <GwPrefs.h>
+#include <n2ksender.h>
 
 // Storage for some wifi credentials.
 static const uint16_t MaxAP = 2;
@@ -204,8 +206,8 @@ void wifiSetup(String &hostName) {
 // and save the last message of each PGN
 void wifiWork(void) {
     tN2kMsg msg;
-
-    if (WiFi.status() == WL_CONNECTED) {
+    int32_t enableYDRX = GwGetInt(YDRXENABLE);
+    if (WiFi.status() == WL_CONNECTED && enableYDRX) {
         while (ydtoN2kUDP.readYD(msg)) {
             ydRX.addMsg(msg);
         }
