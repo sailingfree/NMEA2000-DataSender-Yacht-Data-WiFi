@@ -151,7 +151,7 @@ void setupN2ksender() {
     // Set Product information
     NMEA2000.SetProductInformation("200",                                   // Manufacturer's Model serial code
                                    2047,                                    // Manufacturer's product code
-                                   "Naiad NMEA2000 and YD message sender",  // Manufacturer's Model ID
+                                   "Naiad N2K-YD Tester",  // Manufacturer's Model ID
                                    "1.0.0 Oct 2024",                        // Manufacturer's Software version code
                                    "1.1.0"                                  // Manufacturer's Model version
     );
