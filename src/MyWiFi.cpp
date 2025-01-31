@@ -62,7 +62,7 @@ YDtoN2kUDP ydtoN2kUDP;
 WiFiUDP wifiUdp;
 
 // The telnet server for the shell.
-WiFiServer telnet(23);
+WiFiServer telnetServer(23);
 
 // Telnet client for connections
 WiFiClient telnetClient;
@@ -192,7 +192,7 @@ void wifiSetup(String &hostName) {
                         23); // Telnet server of RemoteDebug, register as telnet
 
         // Start the telnet server
-        telnet.begin();
+        telnetServer.begin();
 
         // start the YD UDP socket
         ydtoN2kUDP.begin(4444);

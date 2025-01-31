@@ -92,7 +92,7 @@ static void handle_gw_msgs(const tN2kMsg &N2kMsg) {
         case 130313:   // Humidity
         case 130314:   // Pressure
         default:
-//            Serial.printf("Handling PGN %ld\n", PGN);
+//            shell.printf("Handling PGN %ld\n", PGN);
 
             // Add to the received CAN message map
             canRX.addMsg(N2kMsg);
@@ -248,7 +248,7 @@ void handleN2kMessages() {
                 char buf[200];
                 snprintf(buf, 200, "\nMessages sent:%lu, sent failed:%lu\n",
                          N2kMsgSentCount, N2kMsgFailCount);
-                Serial.print(buf);
+                shell.print(buf);
             }
         }
 
@@ -731,11 +731,11 @@ void CheckLoopTime() {
 
     if (NextCheck < millis()) {
         NextCheck = millis() + LoopTimePeriod;
-//        Serial.print("- Loop times max:");
-//        Serial.print(MaxLoopTime);
-//        Serial.print(" us, avg:");
-//        Serial.print(AvgSum / AvgCount);
-//        Serial.println(" us");
+//        shell.print("- Loop times max:");
+//        shell.print(MaxLoopTime);
+//        shell.print(" us, avg:");
+//        shell.print(AvgSum / AvgCount);
+//        shell.println(" us");
         MaxLoopTime = 0;
         AvgSum = 0;
         AvgCount = 0;
@@ -770,8 +770,8 @@ int ToggleStats(int argc, char ** argv) {
 int ToggleSending(int argc, char ** argv) {
     enableCAN = !enableCAN;
     GwSetInt(CANENBALE, enableCAN);
-    Serial.print("Message sending ");
-    Serial.println(enableCAN ? "enabled" : "disabled");
+    shell.print("Message sending ");
+    shell.println(enableCAN ? "enabled" : "disabled");
     return 0;
 }
 
@@ -786,8 +786,8 @@ int ToggleForward(int argc, char ** argv) {
     EnableForward = !EnableForward;
     NMEA2000.EnableForward(EnableForward);
 
-    Serial.print("Show bus messages ");
-    Serial.println(EnableForward ? "enabled" : "disabled");
+    shell.print("Show bus messages ");
+    shell.println(EnableForward ? "enabled" : "disabled");
     return 0;
 }
 
@@ -795,7 +795,7 @@ int ToggleForward(int argc, char ** argv) {
 int ClearStatistics(int argc, char ** argv) {
     N2kMsgSentCount = 0;
     N2kMsgFailCount = 0;
-    Serial.println("Message statistics cleared");
+    shell.println("Message statistics cleared");
     return 0;
 }
 
@@ -817,20 +817,20 @@ bool GetParam(int argc, char ** argv, T &Value, T Def = 0) {
 // *****************************************************************************
 int ToggleMsgSending(int argc, char ** argv) {
     if (!HasParam(argc, argv)) {
-        Serial.println("Message index not defined");
+        shell.println("Message index not defined");
         return 0;
     }
 
     size_t MsgIndex;
     if (!GetParam(1, argv, MsgIndex) || MsgIndex >= nN2kSendMessages) {
-        Serial.println("Invalid message index");
+        shell.println("Invalid message index");
         return 0;
     }
 
     N2kSendMessages[MsgIndex].Enable(!N2kSendMessages[MsgIndex].Scheduler.IsEnabled());
-    Serial.print(N2kSendMessages[MsgIndex].Description);
-    Serial.print("  ");
-    Serial.println(N2kSendMessages[MsgIndex].Scheduler.IsEnabled() ? "enabled" : "disabled");
+    shell.print(N2kSendMessages[MsgIndex].Description);
+    shell.print("  ");
+    shell.println(N2kSendMessages[MsgIndex].Scheduler.IsEnabled() ? "enabled" : "disabled");
     // Update the saved map of enabled messages
     saveMap();
     return 0;
@@ -839,33 +839,33 @@ int ToggleMsgSending(int argc, char ** argv) {
 int ToggleYD(int argc, char ** argv) {
     enableYD = !enableYD;
     GwSetInt(YDENABLE, enableYD);
-    Serial.printf("YD sending %s\n", enableYD ? "enabled" : "disabled");
+    shell.printf("YD sending %s\n", enableYD ? "enabled" : "disabled");
     return 0;
 }
 
 int ToggleYDRX(int argc, char ** argv) {
     enableYDRX = !enableYDRX;
     GwSetInt(YDRXENABLE, enableYDRX);
-    Serial.printf("YD receive %s\n", enableYDRX ? "enabled" : "disabled");
+    shell.printf("YD receive %s\n", enableYDRX ? "enabled" : "disabled");
     return 0;
 }
 
 // *****************************************************************************
 int SendMessageNow(int argc, char ** argv) {
     if (!HasParam(argc, argv)) {
-        Serial.println("Message index not defined");
+        shell.println("Message index not defined");
         return 0;
     }
 
     size_t MsgIndex;
     if (!GetParam(1, argv, MsgIndex) || MsgIndex >= nN2kSendMessages) {
-        Serial.println("Invalid message index");
+        shell.println("Invalid message index");
         return 0;
     }
 
     N2kSendMessages[MsgIndex].SendFunction();
-    Serial.print(N2kSendMessages[MsgIndex].Description);
-    Serial.println("  sent");
+    shell.print(N2kSendMessages[MsgIndex].Description);
+    shell.println("  sent");
    return 0;
 }
 
@@ -875,35 +875,35 @@ int EnableAllMessages(int argc, char ** argv) {
         N2kSendMessages[i].Enable(true);
     }
     saveMap();
-    Serial.println("All messages enabled");
+    shell.println("All messages enabled");
     return 0;
 }
 
 // *****************************************************************************
 int DisableAllMessages(int argc, char ** argv) {
-    Serial.printf("Disabling all messages\n");
+    shell.printf("Disabling all messages\n");
     for (size_t i = 0; i < nN2kSendMessages; i++) {
         N2kSendMessages[i].Enable(false);
     }
     saveMap();
-    Serial.println("All messages disabled");
+    shell.println("All messages disabled");
     return 0;
 }
 
 // *****************************************************************************
 int ListMessages(int argc, char ** argv) {
     for (size_t i = 0; i < nN2kSendMessages; i++) {
-        Serial.print("    ");
-        Serial.print(i);
-        Serial.print(" : ");
-        Serial.print(N2kSendMessages[i].Scheduler.IsEnabled() ? "(enabled)  " : "(disabled) ");
-        Serial.println(N2kSendMessages[i].Description);
+        shell.print("    ");
+        shell.print(i);
+        shell.print(" : ");
+        shell.print(N2kSendMessages[i].Scheduler.IsEnabled() ? "(enabled)  " : "(disabled) ");
+        shell.println(N2kSendMessages[i].Description);
     }
     return 0;
 }
 
 int printSummary(int argc, char ** argv) {
-    Serial.printf("N2K %s YD %s\n", enableCAN == true ? "On" : "Off", enableYD ? "On" : "Off");
+    shell.printf("N2K %s YD %s\n", enableCAN == true ? "On" : "Off", enableYD ? "On" : "Off");
     return 0;
 }
 
@@ -985,7 +985,7 @@ void ListDevices(Stream &stream, bool force = false) {
 
 // add the commands to the shell
 void addCommands() {
-    Serial.printf("Adding N2k sender commands to shell\n");
+    shell.printf("Adding N2k sender commands to shell\n");
     shell.addCommand(F("can \t\tToggle sending all N2k CAN messages"), ToggleSending);
     shell.addCommand(F("stats \tToggle displaying N2k stats"), ToggleStats);
     shell.addCommand(F("clear \tClear N2k statistics"), ClearStatistics);

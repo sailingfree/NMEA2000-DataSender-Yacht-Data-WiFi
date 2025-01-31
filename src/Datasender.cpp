@@ -92,9 +92,6 @@ char YD_msg[Max_YD_Message_Size] = "";
 // Create UDP instance
 WiFiUDP udp;
 
-// The telnet server for the shell.
-WiFiServer telnetServer(23);
-
 // Touch calibration. If true then run the touch calibration once
 // this stores the results in nvram and the next boot will use those values
 bool runCalibration = false;
@@ -165,16 +162,6 @@ void setup() {
 
     // Start the wifi
     wifiSetup(host_name);
-
-    // Init Mdns - if enabled
-    initMdns(host_name);
-
-    // Register the services
-    addMdnsService("telnet", "tcp",
-                   23); // Telnet server of RemoteDebug, register as telnet
-
-    // Start the telnet server
-    telnetServer.begin();
 
     // Setup the ntp client
     ntp_setup();
