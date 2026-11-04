@@ -26,7 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <GwPrefs.h>
 #include <MyWiFi.h>
 #include <StringStream.h>
-#include <YDtoN2KUDP.h>
+#include <YDtoN2kUDP.h>
 #include <display.h>
 #include <n2kdatadecode.h>
 #include <msgstats.h>
